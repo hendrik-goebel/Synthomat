@@ -1145,6 +1145,9 @@ export const INITIAL_SYNTH_PARAMS = {
   tremoloRate: 5.0,
   tremoloDepth: 0.5,
   tremoloWaveform: 'sine',
+  // Noise generator defaults
+  noiseLevel: 0,
+  noiseFilterCutoff: 4000,
 };
 
 const lfoControlConfig = Object.fromEntries(
@@ -1346,6 +1349,16 @@ export const controlConfig = {
     key: "reverbSend",
     valueId: "reverb-send-value",
     formatter: (value) => value.toFixed(2),
+  },
+  "noise-level": {
+    key: "noiseLevel",
+    valueId: "noise-level-value",
+    formatter: (value) => value.toFixed(2),
+  },
+  "noise-filter-cutoff": {
+    key: "noiseFilterCutoff",
+    valueId: "noise-filter-cutoff-value",
+    formatter: (value) => `${Math.round(value)} Hz`,
   },
   "master-volume": {
     key: "masterVolume",

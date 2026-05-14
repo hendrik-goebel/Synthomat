@@ -1006,6 +1006,42 @@ export function syncControlsFromActiveInstrumentPage() {
     setControlUIValue(controlId, value);
   });
 
+  // Noise generator controls (if not already present)
+  [
+    { id: "noise-level", label: "Noise Level", min: 0, max: 1, step: 0.01, key: "noiseLevel" },
+    { id: "noise-filter-cutoff", label: "Noise Filter", min: 100, max: 12000, step: 1, key: "noiseFilterCutoff" },
+  ].forEach(({ id, label, min, max, step, key }) => {
+    let input = document.getElementById(id);
+    if (!input) {
+      // Try to find the container for instrument controls
+      const container = document.getElementById("instrument-controls") || document.body;
+      const wrapper = document.createElement("div");
+      wrapper.className = "control-group";
+      const labelEl = document.createElement("label");
+      labelEl.htmlFor = id;
+      labelEl.textContent = label;
+      input = document.createElement("input");
+      input.type = "range";
+      input.id = id;
+      input.min = min;
+      input.max = max;
+      input.step = step;
+      input.value = instrumentParams[key] ?? (key === "noiseLevel" ? 0 : 4000);
+      input.className = "instrument-param-slider";
+      input.addEventListener("input", (e) => {
+        const controller = input.controllerRef || window.controller;
+        if (controller) {
+          controller.setControlValue(id, parseFloat(e.target.value));
+        }
+      });
+      wrapper.appendChild(labelEl);
+      wrapper.appendChild(input);
+      container.appendChild(wrapper);
+    } else {
+      input.value = instrumentParams[key] ?? (key === "noiseLevel" ? 0 : 4000);
+    }
+  });
+
   syncArpeggioOctaveRowUI(state.activeInstrumentPresetId);
   syncNoteButtonsFromActiveInstrumentPage();
   syncDeadNoteControlsUI(

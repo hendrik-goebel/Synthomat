@@ -351,13 +351,32 @@ export function scheduleNote(
     return;
   }
 
+
   const oscA = ctx.createOscillator();
   const oscB = ctx.createOscillator();
   const subOsc = ctx.createOscillator();
 
+  // Noise generator
+  const noiseLevel = clamp(voiceParams.noiseLevel ?? 0, 0, 1);
+  const noiseFilterCutoff = clamp(voiceParams.noiseFilterCutoff ?? 4000, 100, 12000);
+  let noiseSource = null;
+  let noiseFilter = null;
+  let noiseGain = null;
+  if (noiseLevel > 0.001) {
+    noiseSource = ctx.createBufferSource();
+    noiseSource.buffer = getNoiseBuffer(ctx);
+    noiseSource.loop = true;
+    noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = "lowpass";
+    noiseFilter.frequency.value = noiseFilterCutoff;
+    noiseGain = ctx.createGain();
+    noiseGain.gain.value = noiseLevel;
+  }
+
   const voiceGain = ctx.createGain();
   const upperMix = ctx.createGain();
   const subMix = ctx.createGain();
+  const noiseMix = ctx.createGain();
   const toneFilter = ctx.createBiquadFilter();
   const tapeDelaySend = ctx.createGain();
   const cleanDelaySend = ctx.createGain();
@@ -376,6 +395,7 @@ export function scheduleNote(
     voiceGain,
     upperMix,
     subMix,
+    noiseMix,
     toneFilter,
     tapeDelaySend,
     cleanDelaySend,
@@ -383,6 +403,9 @@ export function scheduleNote(
     channelOutputGain,
     channelLevelGain,
   ];
+  if (noiseSource) voiceNodes.push(noiseSource);
+  if (noiseFilter) voiceNodes.push(noiseFilter);
+  if (noiseGain) voiceNodes.push(noiseGain);
   if (stereoPanner) {
     voiceNodes.push(stereoPanner);
   }
@@ -558,6 +581,16 @@ export function scheduleNote(
   subOsc.connect(subMix);
   upperMix.connect(voiceGain);
   subMix.connect(voiceGain);
+  // Noise path
+  if (noiseSource && noiseFilter && noiseGain) {
+    noiseSource.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(noiseMix);
+    noiseMix.connect(voiceGain);
+    // Start noise
+    noiseSource.start(preStartTime);
+    noiseSource.stop(stopTime);
+  }
 
   if (transientAmount > 0.001) {
     const transientSource = ctx.createBufferSource();
@@ -668,6 +701,7 @@ export function scheduleNote(
   oscA.start(preStartTime);
   oscB.start(preStartTime);
   subOsc.start(preStartTime);
+  // NoiseSource start/stop handled above
 
   oscA.stop(stopTime);
   oscB.stop(stopTime);

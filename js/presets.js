@@ -143,6 +143,8 @@ export function createInstrumentParams(channelId, assignedPresetId = getAssigned
     channelVolume: preservedParams.channelVolume ?? startupSceneParams.channelVolume ?? 1,
     channelMuted: preservedParams.channelMuted ?? startupSceneParams.channelMuted ?? 0,
     stereoPan: preservedParams.stereoPan ?? startupSceneParams.stereoPan ?? getInitialStereoPan(channelId),
+    noiseLevel: preservedParams.noiseLevel ?? startupSceneParams.noiseLevel ?? 0,
+    noiseFilterCutoff: preservedParams.noiseFilterCutoff ?? startupSceneParams.noiseFilterCutoff ?? 4000,
     ...(
       preservedParams.noteLength !== undefined
         ? { noteLength: preservedParams.noteLength }
