@@ -49,6 +49,7 @@ import { LFO_TARGET_OPTIONS, LFO_SLOT_CONFIGS } from "./constants.js";
 
 // Cache note button elements once for the lifetime of the page
 let noteButtonElements = null;
+let arpeggioPauseNoteToggleElements = null;
 let deadNoteToggleElement = null;
 let deadNoteCountToggleElement = null;
 let arpeggioSettingsToggleElement = null;
@@ -94,6 +95,13 @@ function getNoteButtonElements() {
     noteButtonElements = NOTE_OPTIONS.map(({ id }) => document.getElementById(id)).filter(Boolean);
   }
   return noteButtonElements;
+}
+
+function getArpeggioPauseNoteToggleElements() {
+  if (!arpeggioPauseNoteToggleElements) {
+    arpeggioPauseNoteToggleElements = Array.from(document.querySelectorAll(".arpeggio-pause-note-toggle"));
+  }
+  return arpeggioPauseNoteToggleElements;
 }
 
 function getDeadNoteToggleElement() {
@@ -363,6 +371,15 @@ function renderNoteSelectorGrid() {
     const buttonsContainer = document.createElement("div");
     buttonsContainer.className = "note-row-buttons";
 
+    const pauseButton = document.createElement("button");
+    pauseButton.type = "button";
+    pauseButton.className = "note-toggle note-toggle--pause arpeggio-pause-note-toggle";
+    pauseButton.value = "0";
+    pauseButton.setAttribute("aria-pressed", "false");
+    pauseButton.setAttribute("aria-label", "Pause note disabled");
+    pauseButton.textContent = "";
+    buttonsContainer.append(pauseButton);
+
     NOTE_OPTIONS.filter((note) => note.octave === octave).forEach((note) => {
       const button = document.createElement("button");
       button.id = note.id;
@@ -385,6 +402,7 @@ function renderNoteSelectorGrid() {
   }
 
   noteButtonElements = null;
+  arpeggioPauseNoteToggleElements = null;
   noteRowToggleElements = null;
   noteRowElements = null;
 }
@@ -396,6 +414,15 @@ function renderSettingsNoteGrid() {
   }
 
   settingsNoteGrid.replaceChildren();
+  const pauseButton = document.createElement("button");
+  pauseButton.type = "button";
+  pauseButton.className = "note-toggle settings-pause-note-toggle note-toggle--pause arpeggio-pause-note-toggle";
+  pauseButton.value = "0";
+  pauseButton.setAttribute("aria-pressed", "false");
+  pauseButton.setAttribute("aria-label", "Pause note disabled");
+  pauseButton.textContent = "";
+  settingsNoteGrid.append(pauseButton);
+
   PITCH_CLASS_OPTIONS.forEach(({ key, label }) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -407,6 +434,7 @@ function renderSettingsNoteGrid() {
   });
 
   settingsNoteButtonElements = null;
+  arpeggioPauseNoteToggleElements = null;
 }
 
 function resetArpeggioApplyChannelSelection(channelIds = getPresetIds()) {
@@ -964,6 +992,17 @@ export function syncDeadNoteControlsUI(deadNoteEnabled, pauseCount) {
   countButton.classList.toggle("is-muted", !isActive);
 }
 
+export function syncArpeggioPauseNoteControlUI(pauseNoteEnabled) {
+  const isActive = Boolean(Number(pauseNoteEnabled));
+  getArpeggioPauseNoteToggleElements().forEach((pauseNoteButton) => {
+    pauseNoteButton.value = isActive ? "1" : "0";
+    pauseNoteButton.classList.toggle("is-active", isActive);
+    pauseNoteButton.setAttribute("aria-pressed", String(isActive));
+    pauseNoteButton.setAttribute("aria-label", isActive ? "Pause note enabled" : "Pause note disabled");
+    pauseNoteButton.textContent = "";
+  });
+}
+
 function syncGlobalTransportButtons() {
   const playButton = getGlobalPlayButtonElement();
   const stopButton = getGlobalStopButtonElement();
@@ -1146,6 +1185,7 @@ export function syncControlsFromActiveInstrumentPage() {
     instrumentParams.deadNoteAtEnd ?? 0,
     instrumentParams.endPauseCount ?? DEAD_NOTE_PAUSE_COUNT_MIN,
   );
+  syncArpeggioPauseNoteControlUI(instrumentParams.pauseNoteEnabled ?? 0);
   syncArpeggioSettingsHistoryView(state.activeInstrumentPresetId);
   syncMidiGlobalUI();
   updateTransportUI();
@@ -1402,6 +1442,7 @@ export function bindNoteSelector(controller) {
   ensureInstrumentNoteState(state.activeInstrumentPresetId);
   syncArpeggioOctaveRowUI(state.activeInstrumentPresetId);
   syncNoteButtonsFromActiveInstrumentPage();
+  bindArpeggioPauseNoteToggle(controller);
 }
 
 export function bindDeadNoteToggle(controller) {
@@ -1442,6 +1483,24 @@ export function bindDeadNoteToggle(controller) {
   });
 }
 
+export function bindArpeggioPauseNoteToggle(controller) {
+  getArpeggioPauseNoteToggleElements().forEach((pauseNoteButton) => {
+    if (pauseNoteButton.dataset.pauseToggleBound === "1") {
+      return;
+    }
+
+    pauseNoteButton.controllerRef = controller;
+    pauseNoteButton.dataset.pauseToggleBound = "1";
+    pauseNoteButton.addEventListener("click", (event) => {
+      const controllerRef = event.currentTarget?.controllerRef;
+      if (!controllerRef) {
+        return;
+      }
+      controllerRef.toggleArpeggioPauseNote();
+    });
+  });
+}
+
 export function bindSettingsDialog(controller) {
   const toggleButton = getArpeggioSettingsToggleElement();
   const dialog = getArpeggioSettingsDialogElement();
@@ -1457,6 +1516,7 @@ export function bindSettingsDialog(controller) {
   }
 
   renderSettingsNoteGrid();
+  bindArpeggioPauseNoteToggle(controller);
 
   const openDialog = () => {
     resetArpeggioApplyChannelSelection();
@@ -1543,6 +1603,7 @@ export function bindSettingsDialog(controller) {
     }
 
     const settingsNoteButton = event.target.closest(".settings-note-toggle");
+
     if (settingsNoteButton) {
       const pitchClassKey = settingsNoteButton.dataset.pitchClassKey;
       if (!pitchClassKey) {
@@ -1853,6 +1914,14 @@ export function bindControllerEvents(controller) {
           instrumentParams.deadNoteAtEnd ?? 0,
           instrumentParams.endPauseCount ?? DEAD_NOTE_PAUSE_COUNT_MIN,
         );
+      }
+      return;
+    }
+
+    if (type === "arpeggio-pause-note-updated") {
+      if (presetId === state.activeInstrumentPresetId) {
+        const instrumentParams = getInstrumentParams(presetId);
+        syncArpeggioPauseNoteControlUI(instrumentParams.pauseNoteEnabled ?? 0);
       }
       return;
     }

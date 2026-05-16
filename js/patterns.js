@@ -194,16 +194,36 @@ function getNoteButtonCache() {
   return noteButtonCache;
 }
 
-export function buildArpeggioPattern(notes, trailingPauseCount = 0) {
-  let pattern;
+function getBaseArpeggioStepCount(noteCount) {
+  if (noteCount <= 0) {
+    return 0;
+  }
+  if (noteCount < 2) {
+    return noteCount;
+  }
+  return noteCount + (noteCount - 2);
+}
 
-  if (notes.length < 2) {
-    pattern = notes.slice();
-  } else {
-    const ascending = notes.slice();
-    const descendingWithoutPeakOrRoot = notes.slice(1, -1).reverse();
+function getRandomPauseInsertionIndex(noteCount) {
+  const stepCount = getBaseArpeggioStepCount(noteCount);
+  if (stepCount <= 0) {
+    return 0;
+  }
+  return Math.floor(Math.random() * (stepCount + 1));
+}
 
-    pattern = ascending.concat(descendingWithoutPeakOrRoot);
+export function buildArpeggioPattern(notes, trailingPauseCount = 0, pauseInsertionIndex = null) {
+  const ascending = notes.slice();
+  const descendingWithoutPeakOrRoot = notes.length < 2 ? [] : notes.slice(1, -1).reverse();
+  const pattern = ascending.concat(descendingWithoutPeakOrRoot);
+
+  if (Number.isInteger(pauseInsertionIndex)) {
+    const safePauseInsertionIndex = Math.min(
+      pattern.length,
+      Math.max(0, pauseInsertionIndex),
+    );
+    // A dedicated silent step behaves like a rest "note" inside the loop.
+    pattern.splice(safePauseInsertionIndex, 0, null);
   }
 
   const normalizedPauseCount = Math.max(0, Math.floor(trailingPauseCount));
@@ -272,14 +292,20 @@ export function rebuildInstrumentPattern(presetId) {
   const selectedFrequencies = selectedNoteIds
     .map((id) => noteFrequencyMap.get(id))
     .filter(Boolean);
+  const includePauseNote = Boolean(Number(instrumentParams.pauseNoteEnabled ?? 0));
+  const pauseInsertionIndex = includePauseNote
+    ? getRandomPauseInsertionIndex(selectedNoteIds.length)
+    : null;
 
   state.instrumentPatternNoteIdsByPresetId[presetId] = buildArpeggioPattern(
     selectedNoteIds,
     instrumentParams.deadNoteAtEnd ? instrumentParams.endPauseCount ?? 1 : 0,
+    pauseInsertionIndex,
   );
   state.instrumentPatternsByPresetId[presetId] = buildArpeggioPattern(
     selectedFrequencies,
     instrumentParams.deadNoteAtEnd ? instrumentParams.endPauseCount ?? 1 : 0,
+    pauseInsertionIndex,
   );
 }
 
@@ -453,6 +479,7 @@ export function getInstrumentPatternNoteIds(presetId) {
 export function syncNoteButtonsFromActiveInstrumentPage() {
   ensureInstrumentNoteState(state.activeInstrumentPresetId);
   const selectedNoteIds = state.instrumentNoteIdsByPresetId[state.activeInstrumentPresetId];
+  const instrumentParams = getInstrumentParams(state.activeInstrumentPresetId);
   const inKeyPitchClasses = new Set(getPitchClassesForMajorKey(state.globalArpeggioKeyIndex));
   const buttons = getNoteButtonCache();
 
@@ -467,6 +494,17 @@ export function syncNoteButtonsFromActiveInstrumentPage() {
     noteButton.classList.toggle("is-active", isActive);
     noteButton.classList.toggle("is-in-key", isInKey);
     noteButton.setAttribute("aria-pressed", String(isActive));
+  });
+
+  const pauseEnabled = Boolean(Number(instrumentParams.pauseNoteEnabled ?? 0));
+  const pauseNoteButtons = document.querySelectorAll(".arpeggio-pause-note-toggle");
+  pauseNoteButtons.forEach((pauseNoteButton) => {
+    pauseNoteButton.classList.toggle("is-active", pauseEnabled);
+    pauseNoteButton.setAttribute("aria-pressed", String(pauseEnabled));
+    pauseNoteButton.setAttribute(
+      "aria-label",
+      pauseEnabled ? "Pause note enabled" : "Pause note disabled",
+    );
   });
 }
 

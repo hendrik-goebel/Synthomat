@@ -370,6 +370,7 @@ function sanitizeSeedChannelParamValue(key, value, fallback, currentParams = {})
       return clampNumber(value, 0, 240, fallback);
     case "delaySend":
       return clampNumber(value, 0, TAPE_DELAY_SEND_MAX, fallback);
+    case "pauseNoteEnabled":
     case "deadNoteAtEnd":
     case "channelMuted":
       return sanitizeToggleValue(value, fallback);
@@ -1594,6 +1595,29 @@ export class AudioStateController extends EventTarget {
 
   applyActiveArpeggioSettingsToAllInstruments() {
     return this.applyActiveArpeggioSettingsToChannels(getPresetIds());
+  }
+
+  toggleArpeggioPauseNote(presetId = state.activeInstrumentPresetId) {
+    if (!validChannelIds.has(presetId)) {
+      this.emitError(`Unknown preset id: ${presetId}`, { presetId });
+      return false;
+    }
+
+    ensureInstrumentNoteState(presetId);
+    const instrumentParams = getInstrumentParams(presetId);
+    const nextValue = instrumentParams.pauseNoteEnabled ? 0 : 1;
+    instrumentParams.pauseNoteEnabled = nextValue;
+    rebuildInstrumentPattern(presetId);
+
+    this.emitAction("arpeggio-pause-note-toggled", {
+      presetId,
+      value: nextValue,
+    });
+    this.emitStateChange("arpeggio-pause-note-updated", {
+      presetId,
+      value: nextValue,
+    });
+    return true;
   }
 
   toggleDeadNoteAtEnd(presetId = state.activeInstrumentPresetId) {

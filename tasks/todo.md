@@ -1,3 +1,23 @@
+# Task: Move Pause Note Into Arpeggio Buttons And Randomize Its Step Position
+
+## Plan
+- [x] Move the pause-note control into the note-grid button row as the first blank-labeled arpeggio button.
+- [x] Keep pause-note state in existing per-channel params, but resync the new blank button through the existing UI/controller event flow.
+- [x] Randomize the pause-step insertion index every time an arpeggio pattern is rebuilt, and keep note-id and frequency patterns aligned to the same random index.
+- [x] Add/update a focused regression and run arpeggio tests.
+
+## Progress Notes
+- Moved the pause-note control from the action-row button into the first note row in `index.html` and `js/ui.js`, rendered as a blank leading note button (`#arpeggio-pause-note-toggle`).
+- Updated `css/style.css` with `.note-toggle--pause` styling so the control stays visually blank while still showing clear active/inactive state.
+- Updated `js/patterns.js` to compute one random pause insertion index per rebuild and apply it to both `instrumentPatternNoteIdsByPresetId` and `instrumentPatternsByPresetId` so MIDI note IDs and audio frequencies stay step-aligned.
+- Updated `tasks/arpeggio-pause-note-test.mjs` to cover deterministic random insertion and pause-note toggle behavior.
+
+## Review
+- `node --experimental-default-type=module tasks/arpeggio-pause-note-test.mjs` passed.
+- `node --experimental-default-type=module tasks/arpeggio-octave-row-toggle-test.mjs` passed.
+
+---
+
 # Task: Add Configurable Classic Or Microtone Harmonic Note System
 
 ## Plan
