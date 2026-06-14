@@ -759,19 +759,97 @@ export function scheduleNote(
 export function scheduleInstrumentStackNote(time, stepIndex = state.stepIndex) {
   const activePresetIds = state.activePresetIds;
   const playingPresetIds = state.playingPresetIds;
-  const getLinkedPairKey = (leftPresetId, rightPresetId) => [leftPresetId, rightPresetId].sort().join("|");
-  const getLinkedPartnerId = (presetId) => {
+  const getLinkedTargetId = (presetId) => {
     const voiceParams = getInstrumentParams(presetId);
     const targetPresetId = typeof voiceParams.arpeggioLinkTargetId === "string"
-      ? voiceParams.arpeggioLinkTargetId
+      ? voiceParams.arpeggioLinkTargetId.trim()
       : "";
     if (!targetPresetId || targetPresetId === presetId || !playingPresetIds.has(targetPresetId)) {
       return "";
     }
 
-    const targetParams = getInstrumentParams(targetPresetId);
-    return targetParams.arpeggioLinkTargetId === presetId ? targetPresetId : "";
+    return targetPresetId;
   };
+
+  const linkTargetByPresetId = new Map();
+  const linkedPresetIds = new Set();
+  for (let i = 0; i < activePresetIds.length; i += 1) {
+    const presetId = activePresetIds[i];
+    if (!playingPresetIds.has(presetId)) {
+      continue;
+    }
+    const linkedTargetId = getLinkedTargetId(presetId);
+    linkTargetByPresetId.set(presetId, linkedTargetId);
+    if (linkedTargetId) {
+      linkedPresetIds.add(presetId);
+      linkedPresetIds.add(linkedTargetId);
+    }
+  }
+
+  const groupKeyByPresetId = new Map();
+  const groupLeadByKey = new Map();
+  const groupMemberSetByKey = new Map();
+  if (linkedPresetIds.size > 0) {
+    const activeOrderByPresetId = new Map(activePresetIds.map((presetId, index) => [presetId, index]));
+    const neighborsByPresetId = new Map();
+    linkedPresetIds.forEach((presetId) => {
+      neighborsByPresetId.set(presetId, new Set());
+    });
+
+    for (let i = 0; i < activePresetIds.length; i += 1) {
+      const presetId = activePresetIds[i];
+      if (!linkedPresetIds.has(presetId)) {
+        continue;
+      }
+      const targetPresetId = linkTargetByPresetId.get(presetId) || "";
+      if (!targetPresetId || !linkedPresetIds.has(targetPresetId)) {
+        continue;
+      }
+      neighborsByPresetId.get(presetId).add(targetPresetId);
+      neighborsByPresetId.get(targetPresetId).add(presetId);
+    }
+
+    const unvisitedPresetIds = new Set(linkedPresetIds);
+    while (unvisitedPresetIds.size > 0) {
+      const seedPresetId = unvisitedPresetIds.values().next().value;
+      const stack = [seedPresetId];
+      const groupPresetIds = [];
+      unvisitedPresetIds.delete(seedPresetId);
+
+      while (stack.length > 0) {
+        const currentPresetId = stack.pop();
+        groupPresetIds.push(currentPresetId);
+        const neighbors = neighborsByPresetId.get(currentPresetId) || new Set();
+        neighbors.forEach((neighborPresetId) => {
+          if (!unvisitedPresetIds.has(neighborPresetId)) {
+            return;
+          }
+          unvisitedPresetIds.delete(neighborPresetId);
+          stack.push(neighborPresetId);
+        });
+      }
+
+      groupPresetIds.sort((leftPresetId, rightPresetId) => (
+        (activeOrderByPresetId.get(leftPresetId) ?? Number.MAX_SAFE_INTEGER)
+        - (activeOrderByPresetId.get(rightPresetId) ?? Number.MAX_SAFE_INTEGER)
+      ));
+
+      const groupKey = groupPresetIds.slice().sort().join("|");
+      const groupMemberSet = new Set(groupPresetIds);
+      groupMemberSetByKey.set(groupKey, groupMemberSet);
+
+      const rememberedLeadPresetId = state.linkedArpeggioLeadByPairKey[groupKey];
+      const leadPresetId = rememberedLeadPresetId && groupMemberSet.has(rememberedLeadPresetId)
+        ? rememberedLeadPresetId
+        : groupPresetIds[0];
+      state.linkedArpeggioLeadByPairKey[groupKey] = leadPresetId;
+      groupLeadByKey.set(groupKey, leadPresetId);
+
+      groupPresetIds.forEach((presetId) => {
+        groupKeyByPresetId.set(presetId, groupKey);
+      });
+    }
+  }
 
   const noteEvents = [];
 
@@ -791,20 +869,24 @@ export function scheduleInstrumentStackNote(time, stepIndex = state.stepIndex) {
       continue;
     }
 
-    const linkedPartnerId = getLinkedPartnerId(presetId);
     let patternStepIndex = Math.floor(stepIndex / stepInterval);
-    if (linkedPartnerId) {
-      const pairKey = getLinkedPairKey(presetId, linkedPartnerId);
-      const leadPresetId = state.linkedArpeggioLeadByPairKey[pairKey] || presetId;
-      const pairState = state.linkedArpeggioTurnByPairKey[pairKey] || {
+    const groupKey = groupKeyByPresetId.get(presetId);
+    if (groupKey) {
+      const groupMemberSet = groupMemberSetByKey.get(groupKey);
+      const leadPresetId = groupLeadByKey.get(groupKey) || presetId;
+      const groupState = state.linkedArpeggioTurnByPairKey[groupKey] || {
         activePresetId: leadPresetId,
       };
 
-      if (!state.linkedArpeggioTurnByPairKey[pairKey]) {
-        state.linkedArpeggioTurnByPairKey[pairKey] = pairState;
+      if (!state.linkedArpeggioTurnByPairKey[groupKey]) {
+        state.linkedArpeggioTurnByPairKey[groupKey] = groupState;
       }
 
-      if (pairState.activePresetId !== presetId) {
+      if (!groupMemberSet?.has(groupState.activePresetId)) {
+        groupState.activePresetId = leadPresetId;
+      }
+
+      if (groupState.activePresetId !== presetId) {
         continue;
       }
 
@@ -813,7 +895,10 @@ export function scheduleInstrumentStackNote(time, stepIndex = state.stepIndex) {
       const nextLocalStepIndex = localStepIndex + 1;
       state.linkedArpeggioStepIndexByPresetId[presetId] = nextLocalStepIndex;
       if (nextLocalStepIndex % pattern.length === 0) {
-        pairState.activePresetId = linkedPartnerId;
+        const linkedTargetId = linkTargetByPresetId.get(presetId) || "";
+        groupState.activePresetId = linkedTargetId && groupMemberSet?.has(linkedTargetId)
+          ? linkedTargetId
+          : leadPresetId;
       }
     }
 

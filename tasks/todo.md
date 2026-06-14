@@ -15,6 +15,8 @@
 - Added `tasks/arpeggio-link-test.mjs` to assert pair linking and cycle alternation behavior.
 - Follow-up correction: removed transport pre-checks that aborted scheduling when the current grid step had no note trigger (`js/audio-engine.js`), which had unintentionally frozen `stepIndex` and made playback stop after one pass even with no links enabled.
 - Follow-up UX update: replaced the mixer `Link` cycle button with a per-channel `select` (`Link -` + all other channels) in `js/ui.js`, added direct setter wiring in `js/audio-state-controller.js`, and styled the control in `css/style.css`.
+- Follow-up behavior update: removed forced reciprocal pairing and enabled directed multi-channel links (for example `1 -> 2`, `2 -> 3`, `3 -> 1`) by updating link assignment in `js/audio-state-controller.js` and scheduler group handoff logic in `js/audio-engine.js`.
+- Updated `tasks/arpeggio-link-test.mjs` to assert the directed three-channel handoff sequence (`warm`, `pluck`, `organ`) across full arpeggio cycles.
 
 ## Review
 - `node --experimental-default-type=module tasks/arpeggio-link-test.mjs` passed.
@@ -23,6 +25,7 @@
 - `npm run build` completed successfully.
 - Follow-up verification after the transport-stall fix: `node --experimental-default-type=module tasks/arpeggio-link-test.mjs`, `tasks/global-transport-controls-test.mjs`, and `tasks/arpeggio-pause-note-test.mjs` all passed again, and `npm run build` completed successfully.
 - Follow-up verification after the select-box UI change: `node --experimental-default-type=module tasks/arpeggio-link-test.mjs` and `tasks/global-transport-controls-test.mjs` passed, and `npm run build` completed successfully.
+- Follow-up verification after directed multi-link support: `node --experimental-default-type=module tasks/arpeggio-link-test.mjs`, `tasks/global-transport-controls-test.mjs`, and `tasks/arpeggio-pause-note-test.mjs` passed, and `npm run build` completed successfully.
 
 ---
 

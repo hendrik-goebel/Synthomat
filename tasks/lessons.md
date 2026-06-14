@@ -113,3 +113,5 @@
 
 - Never gate transport timeline advancement on “notes triggered this exact step”; sparse rhythms and non-divisible note lengths require silent grid steps, and aborting those steps can freeze `stepIndex`/`nextNoteTime` and make playback appear to stop.
 
+- For channel-link sequencing, keep link assignment directional (`A -> B`) and resolve runtime playback turns per connected group at schedule time; enforcing reciprocal links in state prevents valid multi-channel rings like `1 -> 2 -> 3 -> 1`.
+
