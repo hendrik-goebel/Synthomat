@@ -721,12 +721,15 @@ export function renderMixerChannels() {
 
   // Incremental update: if channels are already rendered, only patch class state
   if (mixerChannelCache.size > 0) {
-    mixerChannelCache.forEach(({ strip, indicator, instrumentSelect, playBtn, muteBtn, volumeSlider, midiChannelSelect, midiSendBtn, midiReceiveBtn }, presetId) => {
+    mixerChannelCache.forEach(({ strip, indicator, instrumentSelect, playBtn, muteBtn, arpeggioLinkBtn, volumeSlider, midiChannelSelect, midiSendBtn, midiReceiveBtn }, presetId) => {
       const isPlaying = state.playingPresetIds.has(presetId);
       const isCurrent = presetId === state.activeInstrumentPresetId;
       const assignedPresetId = getAssignedPresetId(presetId);
       const instrumentParams = getInstrumentParams(presetId);
       const isMuted = Boolean(Number(instrumentParams.channelMuted));
+      const linkedTargetPresetId = typeof instrumentParams.arpeggioLinkTargetId === "string"
+        ? instrumentParams.arpeggioLinkTargetId
+        : "";
       const midiChannelSettings = getMidiChannelSettings(presetId);
 
       strip.classList.toggle("is-current", isCurrent);
@@ -746,6 +749,14 @@ export function renderMixerChannels() {
         muteBtn.textContent = isMuted ? "Muted" : "Mute";
         muteBtn.classList.toggle("is-muted", isMuted);
         muteBtn.setAttribute("aria-pressed", String(isMuted));
+      }
+
+      if (arpeggioLinkBtn) {
+        const linkedChannelIndex = getPresetIds().indexOf(linkedTargetPresetId);
+        const hasLinkedChannel = linkedChannelIndex !== -1;
+        arpeggioLinkBtn.textContent = hasLinkedChannel ? `Link ${linkedChannelIndex + 1}` : "Link -";
+        arpeggioLinkBtn.classList.toggle("is-active", hasLinkedChannel);
+        arpeggioLinkBtn.setAttribute("aria-pressed", String(hasLinkedChannel));
       }
 
       if (volumeSlider) {
@@ -866,6 +877,20 @@ export function renderMixerChannels() {
     noteSustainBtn.dataset.presetId = presetId;
     noteSustainBtn.title = "Note Sustain Duration";
 
+    const arpeggioLinkBtn = document.createElement("button");
+    arpeggioLinkBtn.type = "button";
+    arpeggioLinkBtn.className = "channel-arpeggio-link-btn";
+    arpeggioLinkBtn.dataset.presetId = presetId;
+    const linkedTargetPresetId = typeof instrumentParams.arpeggioLinkTargetId === "string"
+      ? instrumentParams.arpeggioLinkTargetId
+      : "";
+    const linkedChannelIndex = presetIds.indexOf(linkedTargetPresetId);
+    const hasLinkedChannel = linkedChannelIndex !== -1;
+    arpeggioLinkBtn.textContent = hasLinkedChannel ? `Link ${linkedChannelIndex + 1}` : "Link -";
+    arpeggioLinkBtn.classList.toggle("is-active", hasLinkedChannel);
+    arpeggioLinkBtn.setAttribute("aria-pressed", String(hasLinkedChannel));
+    arpeggioLinkBtn.title = "Arpeggio Link";
+
     const volumeSlider = document.createElement("input");
     volumeSlider.type = "range";
     volumeSlider.className = "channel-volume-slider";
@@ -913,7 +938,7 @@ export function renderMixerChannels() {
 
     midiRow.append(midiChannelSelect, midiSendBtn, midiReceiveBtn);
 
-    buttonsDiv.append(playBtn, variationBtn, muteBtn, noteLengthBtn, noteSustainBtn, volumeSlider, midiRow);
+    buttonsDiv.append(playBtn, variationBtn, muteBtn, noteLengthBtn, noteSustainBtn, arpeggioLinkBtn, volumeSlider, midiRow);
     channelStrip.append(instrumentSelect, nameDiv, indicator, buttonsDiv);
     mixerChannelsContainer.append(channelStrip);
 
@@ -925,6 +950,7 @@ export function renderMixerChannels() {
       muteBtn,
       noteLengthBtn,
       noteSustainBtn,
+      arpeggioLinkBtn,
       volumeSlider,
       midiChannelSelect,
       midiSendBtn,
@@ -949,6 +975,21 @@ function updateChannelNoteSustainButton(presetId, value) {
   const rounded = Math.round(value);
   btn.textContent = `S:1/${rounded}`;
   btn.value = String(rounded);
+}
+
+function updateChannelArpeggioLinkButton(presetId) {
+  const channelElements = mixerChannelCache.get(presetId);
+  const button = channelElements?.arpeggioLinkBtn;
+  if (!button) {
+    return;
+  }
+
+  const linkedTargetPresetId = getInstrumentParams(presetId).arpeggioLinkTargetId;
+  const linkedChannelIndex = getPresetIds().indexOf(linkedTargetPresetId);
+  const hasLinkedChannel = linkedChannelIndex !== -1;
+  button.textContent = hasLinkedChannel ? `Link ${linkedChannelIndex + 1}` : "Link -";
+  button.classList.toggle("is-active", hasLinkedChannel);
+  button.setAttribute("aria-pressed", String(hasLinkedChannel));
 }
 
 function updateChannelVolumeSlider(presetId, value) {
@@ -1768,6 +1809,7 @@ export function bindMixerChannels(controller) {
     const muteBtn = event.target.closest(".channel-mute-btn");
     const noteLengthBtn = event.target.closest(".channel-note-length-btn");
     const noteSustainBtn = event.target.closest(".channel-note-sustain-btn");
+    const arpeggioLinkBtn = event.target.closest(".channel-arpeggio-link-btn");
     const midiSendBtn = event.target.closest(".channel-midi-send-btn");
     const midiReceiveBtn = event.target.closest(".channel-midi-receive-btn");
     const presetId = strip.dataset.presetId;
@@ -1808,6 +1850,11 @@ export function bindMixerChannels(controller) {
       const currentIndex = NOTE_SUSTAIN_OPTIONS.indexOf(currentValue);
       const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % NOTE_SUSTAIN_OPTIONS.length;
       controller.setControlValue("note-sustain-toggle", NOTE_SUSTAIN_OPTIONS[nextIndex]);
+      return;
+    }
+
+    if (arpeggioLinkBtn) {
+      controller.cycleArpeggioLinkTarget(presetId);
       return;
     }
 
@@ -1913,6 +1960,14 @@ export function bindControllerEvents(controller) {
 
     if (type === "channel-midi-updated") {
       renderMixerChannels();
+      return;
+    }
+
+    if (type === "arpeggio-link-updated") {
+      const affectedPresetIds = Array.isArray(event.detail.affectedPresetIds)
+        ? event.detail.affectedPresetIds
+        : [event.detail.presetId].filter(Boolean);
+      affectedPresetIds.forEach((affectedPresetId) => updateChannelArpeggioLinkButton(affectedPresetId));
       return;
     }
 

@@ -1,3 +1,29 @@
+# Task: Add Per-Channel Arpeggio Link Alternation
+
+## Plan
+- [x] Add a per-channel arpeggio link control to each mixer strip so users can cycle a channel link target.
+- [x] Implement controller/state logic that enforces symmetrical channel-link pairs and keeps the initiating channel as the first cycle lead.
+- [x] Update scheduler behavior so linked pairs alternate complete arpeggio cycles while the inactive partner waits.
+- [x] Add a focused regression test for linked alternation and run related arpeggio/transport checks plus a production build.
+
+## Progress Notes
+- Added a new `channel-arpeggio-link-btn` to each strip in `js/ui.js` with `Link -` / `Link N` labels and active-state styling in `css/style.css`.
+- Added `AudioStateController.cycleArpeggioLinkTarget(...)` in `js/audio-state-controller.js` with pair management that keeps links symmetrical (`A <-> B`), clears conflicting prior links safely, and emits `arpeggio-link-updated` events for UI sync.
+- Added link-target persistence defaults in `js/constants.js` / `js/presets.js` and normalized seed-hydration behavior for valid symmetrical links.
+- Extended `js/audio-engine.js` scheduling so linked channels alternate full pattern cycles (for example `warm` cycle, then `pluck` cycle, then repeat) while the inactive linked channel does not advance.
+- Added runtime linked-turn state to `js/state.js` and reset behavior for transport restarts.
+- Added `tasks/arpeggio-link-test.mjs` to assert pair linking and cycle alternation behavior.
+- Follow-up correction: removed transport pre-checks that aborted scheduling when the current grid step had no note trigger (`js/audio-engine.js`), which had unintentionally frozen `stepIndex` and made playback stop after one pass even with no links enabled.
+
+## Review
+- `node --experimental-default-type=module tasks/arpeggio-link-test.mjs` passed.
+- `node --experimental-default-type=module tasks/arpeggio-pause-note-test.mjs` passed.
+- `node --experimental-default-type=module tasks/global-transport-controls-test.mjs` passed.
+- `npm run build` completed successfully.
+- Follow-up verification after the transport-stall fix: `node --experimental-default-type=module tasks/arpeggio-link-test.mjs`, `tasks/global-transport-controls-test.mjs`, and `tasks/arpeggio-pause-note-test.mjs` all passed again, and `npm run build` completed successfully.
+
+---
+
 # Task: Optimize Scheduler CPU Usage
 
 ## Plan

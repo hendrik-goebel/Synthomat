@@ -374,6 +374,16 @@ function sanitizeSeedChannelParamValue(key, value, fallback, currentParams = {})
     case "deadNoteAtEnd":
     case "channelMuted":
       return sanitizeToggleValue(value, fallback);
+    case "arpeggioLinkTargetId": {
+      if (typeof value !== "string") {
+        return "";
+      }
+      const normalized = value.trim();
+      if (!normalized || !validChannelIds.has(normalized)) {
+        return "";
+      }
+      return normalized;
+    }
     case "endPauseCount": {
       const numeric = toNumber(value);
       return numeric === null
@@ -649,6 +659,42 @@ function applySeedSnapshotToState(seedSnapshot) {
     applyLiveChannelLevelUpdates(channelId, instrumentParams);
   });
 
+  state.linkedArpeggioLeadByPairKey = {};
+  state.linkedArpeggioTurnByPairKey = {};
+  state.linkedArpeggioStepIndexByPresetId = {};
+  const channelIds = getPresetIds();
+  channelIds.forEach((channelId) => {
+    const instrumentParams = getInstrumentParams(channelId);
+    const targetPresetId = typeof instrumentParams.arpeggioLinkTargetId === "string"
+      ? instrumentParams.arpeggioLinkTargetId.trim()
+      : "";
+    instrumentParams.arpeggioLinkTargetId = targetPresetId;
+    if (!targetPresetId || targetPresetId === channelId || !validChannelIds.has(targetPresetId)) {
+      instrumentParams.arpeggioLinkTargetId = "";
+    }
+  });
+
+  channelIds.forEach((channelId) => {
+    const instrumentParams = getInstrumentParams(channelId);
+    const targetPresetId = instrumentParams.arpeggioLinkTargetId;
+    if (!targetPresetId) {
+      return;
+    }
+
+    const targetParams = getInstrumentParams(targetPresetId);
+    if (targetParams.arpeggioLinkTargetId !== channelId) {
+      instrumentParams.arpeggioLinkTargetId = "";
+      return;
+    }
+
+    const pairKey = [channelId, targetPresetId].sort().join("|");
+    if (!state.linkedArpeggioLeadByPairKey[pairKey]) {
+      state.linkedArpeggioLeadByPairKey[pairKey] = channelId;
+    }
+    state.linkedArpeggioStepIndexByPresetId[channelId] = 0;
+    state.linkedArpeggioStepIndexByPresetId[targetPresetId] = 0;
+  });
+
   if (validChannelIds.has(seedSnapshot.activeInstrumentPresetId)) {
     state.activeInstrumentPresetId = seedSnapshot.activeInstrumentPresetId;
   }
@@ -680,6 +726,53 @@ function getExternalMidiTempoBpm(timestampMs) {
 }
 
 export class AudioStateController extends EventTarget {
+  clearChannelArpeggioLink(presetId) {
+    const instrumentParams = getInstrumentParams(presetId);
+    const currentTargetId = typeof instrumentParams.arpeggioLinkTargetId === "string"
+      ? instrumentParams.arpeggioLinkTargetId
+      : "";
+    if (!currentTargetId) {
+      return [];
+    }
+
+    instrumentParams.arpeggioLinkTargetId = "";
+    const pairKey = [presetId, currentTargetId].sort().join("|");
+    delete state.linkedArpeggioLeadByPairKey[pairKey];
+    delete state.linkedArpeggioTurnByPairKey[pairKey];
+    const affectedPresetIds = [presetId];
+    if (validChannelIds.has(currentTargetId)) {
+      const targetParams = getInstrumentParams(currentTargetId);
+      if (targetParams.arpeggioLinkTargetId === presetId) {
+        targetParams.arpeggioLinkTargetId = "";
+        affectedPresetIds.push(currentTargetId);
+      }
+    }
+
+    return affectedPresetIds;
+  }
+
+  pairArpeggioLinks(sourcePresetId, targetPresetId) {
+    const affectedPresetIdSet = new Set([
+      ...this.clearChannelArpeggioLink(sourcePresetId),
+      ...this.clearChannelArpeggioLink(targetPresetId),
+    ]);
+
+    const sourceParams = getInstrumentParams(sourcePresetId);
+    const targetParams = getInstrumentParams(targetPresetId);
+    sourceParams.arpeggioLinkTargetId = targetPresetId;
+    targetParams.arpeggioLinkTargetId = sourcePresetId;
+    affectedPresetIdSet.add(sourcePresetId);
+    affectedPresetIdSet.add(targetPresetId);
+
+    const pairKey = [sourcePresetId, targetPresetId].sort().join("|");
+    state.linkedArpeggioLeadByPairKey[pairKey] = sourcePresetId;
+    delete state.linkedArpeggioTurnByPairKey[pairKey];
+    state.linkedArpeggioStepIndexByPresetId[sourcePresetId] = 0;
+    state.linkedArpeggioStepIndexByPresetId[targetPresetId] = 0;
+
+    return Array.from(affectedPresetIdSet);
+  }
+
   emitTransportStateChange(type = "transport-state-updated", detail = {}) {
     this.emitStateChange(type, {
       transportState: state.transportState,
@@ -1197,6 +1290,42 @@ export class AudioStateController extends EventTarget {
       previousAssignedPresetId,
       noteLength: instrumentParams.noteLength,
       channelVolume: instrumentParams.channelVolume,
+    });
+    return true;
+  }
+
+  cycleArpeggioLinkTarget(presetId) {
+    if (!validChannelIds.has(presetId)) {
+      this.emitError(`Unknown preset id: ${presetId}`, { presetId });
+      return false;
+    }
+
+    const presetIds = getPresetIds();
+    const options = ["", ...presetIds.filter((candidateId) => candidateId !== presetId)];
+    const currentTargetId = getInstrumentParams(presetId).arpeggioLinkTargetId || "";
+    const currentIndex = options.indexOf(currentTargetId);
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % options.length;
+    const nextTargetId = options[nextIndex];
+
+    const affectedPresetIds = nextTargetId
+      ? this.pairArpeggioLinks(presetId, nextTargetId)
+      : this.clearChannelArpeggioLink(presetId);
+
+    // Reset runtime turn progress for affected channels so the next cycle starts cleanly.
+    affectedPresetIds.forEach((affectedPresetId) => {
+      state.linkedArpeggioStepIndexByPresetId[affectedPresetId] = 0;
+    });
+    state.linkedArpeggioTurnByPairKey = {};
+
+    this.emitAction("arpeggio-link-updated", {
+      presetId,
+      targetPresetId: nextTargetId,
+      affectedPresetIds,
+    });
+    this.emitStateChange("arpeggio-link-updated", {
+      presetId,
+      targetPresetId: nextTargetId,
+      affectedPresetIds,
     });
     return true;
   }

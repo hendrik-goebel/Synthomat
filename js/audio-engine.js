@@ -289,6 +289,8 @@ export function stopSchedulerLoop() {
 
 export function resetTransportTimeline(startOffsetSeconds = 0.05) {
   state.stepIndex = 0;
+  state.linkedArpeggioTurnByPairKey = {};
+  state.linkedArpeggioStepIndexByPresetId = {};
   state.nextNoteTime = state.audioContext
     ? state.audioContext.currentTime + startOffsetSeconds
     : 0;
@@ -754,23 +756,30 @@ export function scheduleNote(
   };
 }
 
-export function scheduleInstrumentStackNote(time, layerCount, stepIndex = state.stepIndex) {
-  if (!layerCount) {
-    return;
-  }
-
+export function scheduleInstrumentStackNote(time, stepIndex = state.stepIndex) {
   const activePresetIds = state.activePresetIds;
   const playingPresetIds = state.playingPresetIds;
-  let layerIndex = 0;
+  const getLinkedPairKey = (leftPresetId, rightPresetId) => [leftPresetId, rightPresetId].sort().join("|");
+  const getLinkedPartnerId = (presetId) => {
+    const voiceParams = getInstrumentParams(presetId);
+    const targetPresetId = typeof voiceParams.arpeggioLinkTargetId === "string"
+      ? voiceParams.arpeggioLinkTargetId
+      : "";
+    if (!targetPresetId || targetPresetId === presetId || !playingPresetIds.has(targetPresetId)) {
+      return "";
+    }
+
+    const targetParams = getInstrumentParams(targetPresetId);
+    return targetParams.arpeggioLinkTargetId === presetId ? targetPresetId : "";
+  };
+
+  const noteEvents = [];
 
   for (let i = 0; i < activePresetIds.length; i += 1) {
     const presetId = activePresetIds[i];
     if (!playingPresetIds.has(presetId)) {
       continue;
     }
-
-    const currentLayerIndex = layerIndex;
-    layerIndex += 1;
 
     const voiceParams = getInstrumentParams(presetId);
     const pattern = getInstrumentPattern(presetId);
@@ -782,14 +791,39 @@ export function scheduleInstrumentStackNote(time, layerCount, stepIndex = state.
       continue;
     }
 
-    const patternStepIndex = Math.floor(stepIndex / stepInterval);
+    const linkedPartnerId = getLinkedPartnerId(presetId);
+    let patternStepIndex = Math.floor(stepIndex / stepInterval);
+    if (linkedPartnerId) {
+      const pairKey = getLinkedPairKey(presetId, linkedPartnerId);
+      const leadPresetId = state.linkedArpeggioLeadByPairKey[pairKey] || presetId;
+      const pairState = state.linkedArpeggioTurnByPairKey[pairKey] || {
+        activePresetId: leadPresetId,
+      };
+
+      if (!state.linkedArpeggioTurnByPairKey[pairKey]) {
+        state.linkedArpeggioTurnByPairKey[pairKey] = pairState;
+      }
+
+      if (pairState.activePresetId !== presetId) {
+        continue;
+      }
+
+      const localStepIndex = state.linkedArpeggioStepIndexByPresetId[presetId] ?? 0;
+      patternStepIndex = localStepIndex;
+      const nextLocalStepIndex = localStepIndex + 1;
+      state.linkedArpeggioStepIndexByPresetId[presetId] = nextLocalStepIndex;
+      if (nextLocalStepIndex % pattern.length === 0) {
+        pairState.activePresetId = linkedPartnerId;
+      }
+    }
+
+    const safeNoteIdPatternLength = noteIdPattern.length > 0 ? noteIdPattern.length : pattern.length;
     const layerFrequency = pattern[patternStepIndex % pattern.length];
-    const noteId = noteIdPattern[patternStepIndex % noteIdPattern.length];
+    const noteId = noteIdPattern[patternStepIndex % safeNoteIdPatternLength] ?? null;
     if (layerFrequency == null) {
       continue;
     }
 
-    // --- Note probability logic ---
     let shouldPlay = true;
     if (noteId) {
       const noteName = getNoteProbabilityKeyFromNoteId(noteId);
@@ -804,45 +838,48 @@ export function scheduleInstrumentStackNote(time, layerCount, stepIndex = state.
       }
     }
 
-    if (shouldPlay) {
-      const lfoContext = buildLfoModulationContext(time, voiceParams);
-      const midiNoteNumber = noteId ? getMidiNoteNumberFromNoteId(noteId) : null;
-      const shiftedMidiNoteNumber = getTransposedMidiNoteNumber(midiNoteNumber, voiceParams, time, lfoContext);
-      if (Number.isInteger(shiftedMidiNoteNumber)) {
-        sendMidiNoteForPreset(presetId, shiftedMidiNoteNumber, {
-          timeSeconds: time,
-          durationSeconds: getNoteDuration(voiceParams.noteSustain ?? noteLength),
-          velocity: 96,
-        });
-      }
-
-      scheduleNote(
-        layerFrequency,
-        time,
-        voiceParams,
-        currentLayerIndex,
-        layerCount,
-        presetId,
-        noteLength,
-        MIDI_VELOCITY_MAX,
-        lfoContext,
-      );
+    if (!shouldPlay) {
+      continue;
     }
-  }
-}
 
-function getPlayingActiveLayerCount() {
-  const activePresetIds = state.activePresetIds;
-  const playingPresetIds = state.playingPresetIds;
-  let count = 0;
-
-  for (let i = 0; i < activePresetIds.length; i += 1) {
-    if (playingPresetIds.has(activePresetIds[i])) {
-      count += 1;
-    }
+    noteEvents.push({
+      presetId,
+      noteLength,
+      voiceParams,
+      layerFrequency,
+      noteId,
+    });
   }
 
-  return count;
+  const activeLayerCount = noteEvents.length;
+  if (activeLayerCount === 0) {
+    return;
+  }
+
+  noteEvents.forEach(({ presetId, noteLength, voiceParams, layerFrequency, noteId }, layerIndex) => {
+    const lfoContext = buildLfoModulationContext(time, voiceParams);
+    const midiNoteNumber = noteId ? getMidiNoteNumberFromNoteId(noteId) : null;
+    const shiftedMidiNoteNumber = getTransposedMidiNoteNumber(midiNoteNumber, voiceParams, time, lfoContext);
+    if (Number.isInteger(shiftedMidiNoteNumber)) {
+      sendMidiNoteForPreset(presetId, shiftedMidiNoteNumber, {
+        timeSeconds: time,
+        durationSeconds: getNoteDuration(voiceParams.noteSustain ?? noteLength),
+        velocity: 96,
+      });
+    }
+
+    scheduleNote(
+      layerFrequency,
+      time,
+      voiceParams,
+      layerIndex,
+      activeLayerCount,
+      presetId,
+      noteLength,
+      MIDI_VELOCITY_MAX,
+      lfoContext,
+    );
+  });
 }
 
 export function scheduleCurrentTransportStep(time = state.audioContext?.currentTime + 0.005) {
@@ -850,12 +887,7 @@ export function scheduleCurrentTransportStep(time = state.audioContext?.currentT
     return false;
   }
 
-  const layerCount = getPlayingActiveLayerCount();
-  if (layerCount === 0) {
-    return false;
-  }
-
-  scheduleInstrumentStackNote(time, layerCount, state.stepIndex);
+  scheduleInstrumentStackNote(time, state.stepIndex);
   state.stepIndex += 1;
   state.nextNoteTime = time + getStepDuration();
   return true;
@@ -891,18 +923,13 @@ export function scheduleAhead() {
   if (state.transportState !== "playing" || state.playingPresetIds.size === 0 || !state.audioContext) {
     return;
   }
-
-  const layerCount = getPlayingActiveLayerCount();
-  if (layerCount === 0) {
-    return;
-  }
   const lookaheadEndTime = state.audioContext.currentTime + lookaheadSeconds;
   const stepDuration = getStepDuration();
   let nextNoteTime = state.nextNoteTime;
   let stepIndex = state.stepIndex;
 
   while (nextNoteTime < lookaheadEndTime) {
-    scheduleInstrumentStackNote(nextNoteTime, layerCount, stepIndex);
+    scheduleInstrumentStackNote(nextNoteTime, stepIndex);
     nextNoteTime += stepDuration;
     stepIndex += 1;
   }

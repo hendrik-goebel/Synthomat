@@ -352,6 +352,9 @@ export function resetSharedAppState(
   state.currentStateSeed = "";
   state.arpeggioHistorySnapshots = [];
   state.arpeggioHistoryIndex = 0;
+  state.linkedArpeggioLeadByPairKey = {};
+  state.linkedArpeggioTurnByPairKey = {};
+  state.linkedArpeggioStepIndexByPresetId = {};
   state.activeInstrumentPresetId = DEFAULT_PRESET_ID;
   state.playingPresetIds = new Set();
   state.midi = {

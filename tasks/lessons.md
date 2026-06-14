@@ -109,3 +109,7 @@
 
 - For real-time scheduler hot paths, remove debug logging and compute modulation aggregates once per note-step (then reuse across MIDI and audio branches); repeated map/filter/reduce work in the same tick adds avoidable CPU load.
 
+- When two sequencer channels must alternate instead of playing simultaneously, keep one small runtime turn-state map keyed by channel pair and advance only the active channel's local pattern index; this preserves deterministic cycle handoffs without adding per-step global recomputation.
+
+- Never gate transport timeline advancement on “notes triggered this exact step”; sparse rhythms and non-divisible note lengths require silent grid steps, and aborting those steps can freeze `stepIndex`/`nextNoteTime` and make playback appear to stop.
+

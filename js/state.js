@@ -46,6 +46,9 @@ export const state = {
   currentStateSeed: "",
   arpeggioHistorySnapshots: [],
   arpeggioHistoryIndex: 0,
+  linkedArpeggioLeadByPairKey: {},
+  linkedArpeggioTurnByPairKey: {},
+  linkedArpeggioStepIndexByPresetId: {},
   activeInstrumentPresetId: DEFAULT_PRESET_ID,
   playingPresetIds: new Set(),
   midi: {
