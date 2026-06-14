@@ -569,12 +569,24 @@ function applySeedSnapshotToState(seedSnapshot) {
     return result;
   }, {});
 
+  Object.keys(INITIAL_SYNTH_PARAMS).forEach((key) => {
+    const incomingValue = seedSnapshot.synthParams?.[key];
+    if (incomingValue === undefined) {
+      state.synthParams[key] = INITIAL_SYNTH_PARAMS[key];
+      return;
+    }
+
+    state.synthParams[key] = GLOBAL_CONTROL_KEYS.has(key)
+      ? sanitizeSeedGlobalParamValue(key, incomingValue, INITIAL_SYNTH_PARAMS[key])
+      : sanitizeSeedChannelParamValue(key, incomingValue, INITIAL_SYNTH_PARAMS[key], state.synthParams);
+  });
+
   STATE_SEED_GLOBAL_PARAM_KEYS.forEach((key) => {
-    const fallback = state.synthParams[key] ?? INITIAL_SYNTH_PARAMS[key];
-    const nextValue = seedSnapshot.synthParams?.[key] === undefined
-      ? fallback
-      : sanitizeSeedGlobalParamValue(key, seedSnapshot.synthParams[key], fallback);
-    state.synthParams[key] = nextValue;
+    state.synthParams[key] = sanitizeSeedGlobalParamValue(
+      key,
+      seedSnapshot.synthParams?.[key],
+      INITIAL_SYNTH_PARAMS[key],
+    );
   });
 
   state.globalArpeggioKeyIndex = normalizeCircleOfFifthsKeyIndex(
@@ -582,6 +594,14 @@ function applySeedSnapshotToState(seedSnapshot) {
   );
 
   getPresetIds().forEach((channelId) => {
+    delete state.instrumentParamsByPresetId[channelId];
+    delete state.instrumentArpeggioPitchClassesByPresetId[channelId];
+    delete state.instrumentArpeggioOctavesByPresetId[channelId];
+    delete state.instrumentNoteIdsByPresetId[channelId];
+    delete state.instrumentNoteLengthInitializedByPresetId[channelId];
+    delete state.instrumentPatternsByPresetId[channelId];
+    delete state.instrumentPatternNoteIdsByPresetId[channelId];
+
     const channelSeed = seedSnapshot.channels?.[channelId] || {};
     const assignedPresetId = validAssignablePresetIds.has(channelSeed.assignedPresetId)
       ? channelSeed.assignedPresetId
@@ -1106,7 +1126,8 @@ export class AudioStateController extends EventTarget {
       return false;
     }
 
-    if (seedSnapshot.v !== STATE_SEED_VERSION) {
+    const seedVersion = Number.isFinite(seedSnapshot.v) ? seedSnapshot.v : 0;
+    if (seedVersion > STATE_SEED_VERSION) {
       this.emitError(`Unsupported state seed version: ${seedSnapshot.v ?? "unknown"}`, {
         seed,
         version: seedSnapshot.v,

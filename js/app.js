@@ -18,12 +18,15 @@ import {
   bindPostFilterTypeToggle,
   bindSettingsDialog,
   bindGlobalEffectMixSliders,
+  applySliderDefinitions,
 } from "./ui.js";
 import { getStateSeedFromLocation } from "./state-seed.js";
 import * as audioEngine from "./audio-engine.js";
 import { state } from "./state.js";
 
 const audioStateController = new AudioStateController();
+
+applySliderDefinitions();
 
 bindControllerEvents(audioStateController);
 bindControls();
