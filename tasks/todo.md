@@ -12,6 +12,7 @@
 - Added `AudioStateController.setChannelArpeggioRepeatProbability(...)` in `js/audio-state-controller.js`, including validation, clamping, pattern rebuild, and `channel-arpeggio-repeat-probability-updated` events.
 - Updated `js/patterns.js` so pattern rebuild now applies repeat probability to note steps only (rests are not multiplied) and keeps MIDI note-id patterns and frequency patterns step-aligned.
 - Added `tasks/arpeggio-repeat-probability-test.mjs` to lock min/max behavior and rest handling.
+- Follow-up UX update: moved the repeat-probability slider out of mixer strips and placed it directly below the rhythm-definition section in `index.html`, with active-channel sync/binding in `js/ui.js` and dedicated styling in `css/style.css`.
 
 ## Review
 - `node --experimental-default-type=module tasks/arpeggio-repeat-probability-test.mjs` passed.

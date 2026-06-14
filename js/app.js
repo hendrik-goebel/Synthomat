@@ -6,6 +6,7 @@ import {
   bindDeadNoteToggle,
   bindArpeggioPauseNoteToggle,
   bindRhythmButtons,
+  bindArpeggioRepeatProbabilityControl,
   bindDelayToggleButtons,
   bindGlobalKeyActions,
   bindStateSeedControls,
@@ -40,6 +41,7 @@ bindNoteSelector(audioStateController);
 bindDeadNoteToggle(audioStateController);
 bindArpeggioPauseNoteToggle(audioStateController);
 bindRhythmButtons(audioStateController);
+bindArpeggioRepeatProbabilityControl(audioStateController);
 bindSettingsDialog(audioStateController);
 bindMixerChannels(audioStateController);
 bindKeyboardShortcuts(audioStateController);

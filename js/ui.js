@@ -86,6 +86,8 @@ let settingsChannelButtonElements = null;
 let noteRowToggleElements = null;
 let noteRowElements = null;
 let rhythmButtonElements = null;
+let arpeggioRepeatProbabilityInputElement = null;
+let arpeggioRepeatProbabilityValueElement = null;
 let selectedArpeggioApplyChannelIds = new Set();
 const mixerChannelCache = new Map();
 const controlElementCache = new Map();
@@ -130,6 +132,20 @@ function getRhythmButtonElements() {
     }
   }
   return rhythmButtonElements;
+}
+
+function getArpeggioRepeatProbabilityInputElement() {
+  if (!arpeggioRepeatProbabilityInputElement) {
+    arpeggioRepeatProbabilityInputElement = document.getElementById("arpeggio-repeat-probability");
+  }
+  return arpeggioRepeatProbabilityInputElement;
+}
+
+function getArpeggioRepeatProbabilityValueElement() {
+  if (!arpeggioRepeatProbabilityValueElement) {
+    arpeggioRepeatProbabilityValueElement = document.getElementById("arpeggio-repeat-probability-value");
+  }
+  return arpeggioRepeatProbabilityValueElement;
 }
 
 function getArpeggioSettingsToggleElement() {
@@ -721,7 +737,7 @@ export function renderMixerChannels() {
 
   // Incremental update: if channels are already rendered, only patch class state
   if (mixerChannelCache.size > 0) {
-    mixerChannelCache.forEach(({ strip, indicator, instrumentSelect, playBtn, muteBtn, arpeggioLinkSelect, volumeSlider, repeatProbabilitySlider, midiChannelSelect, midiSendBtn, midiReceiveBtn }, presetId) => {
+    mixerChannelCache.forEach(({ strip, indicator, instrumentSelect, playBtn, muteBtn, arpeggioLinkSelect, volumeSlider, midiChannelSelect, midiSendBtn, midiReceiveBtn }, presetId) => {
       const isPlaying = state.playingPresetIds.has(presetId);
       const isCurrent = presetId === state.activeInstrumentPresetId;
       const assignedPresetId = getAssignedPresetId(presetId);
@@ -757,14 +773,6 @@ export function renderMixerChannels() {
 
       if (volumeSlider) {
         volumeSlider.classList.toggle("is-muted", isMuted);
-      }
-
-      if (repeatProbabilitySlider) {
-        const repeatProbability = Math.max(0, Math.min(1, Number(instrumentParams.arpeggioRepeatProbability ?? 0)));
-        const nextRepeatValue = String(repeatProbability);
-        if (repeatProbabilitySlider.value !== nextRepeatValue) {
-          repeatProbabilitySlider.value = nextRepeatValue;
-        }
       }
 
       if (midiChannelSelect && midiChannelSelect.value !== String(midiChannelSettings.midiChannel)) {
@@ -916,28 +924,6 @@ export function renderMixerChannels() {
     volumeSlider.dataset.presetId = presetId;
     volumeSlider.classList.toggle("is-muted", isMuted);
 
-    const repeatProbabilityRow = document.createElement("div");
-    repeatProbabilityRow.className = "channel-repeat-probability-row";
-
-    const repeatProbabilityLabel = document.createElement("span");
-    repeatProbabilityLabel.className = "channel-repeat-probability-label";
-    repeatProbabilityLabel.textContent = "Rpt";
-
-    const repeatProbabilitySlider = document.createElement("input");
-    repeatProbabilitySlider.type = "range";
-    repeatProbabilitySlider.className = "channel-repeat-probability-slider";
-    repeatProbabilitySlider.min = "0";
-    repeatProbabilitySlider.max = "1";
-    repeatProbabilitySlider.step = "0.01";
-    repeatProbabilitySlider.value = String(
-      Math.max(0, Math.min(1, Number(instrumentParams.arpeggioRepeatProbability ?? 0))),
-    );
-    repeatProbabilitySlider.dataset.presetId = presetId;
-    repeatProbabilitySlider.title = "Arpeggio repeat probability";
-    repeatProbabilitySlider.setAttribute("aria-label", `Arpeggio repeat probability for channel ${index + 1}`);
-
-    repeatProbabilityRow.append(repeatProbabilityLabel, repeatProbabilitySlider);
-
     const midiRow = document.createElement("div");
     midiRow.className = "channel-midi-row";
 
@@ -973,7 +959,7 @@ export function renderMixerChannels() {
 
     midiRow.append(midiChannelSelect, midiSendBtn, midiReceiveBtn);
 
-    buttonsDiv.append(playBtn, variationBtn, muteBtn, noteLengthBtn, noteSustainBtn, arpeggioLinkSelect, volumeSlider, repeatProbabilityRow, midiRow);
+    buttonsDiv.append(playBtn, variationBtn, muteBtn, noteLengthBtn, noteSustainBtn, arpeggioLinkSelect, volumeSlider, midiRow);
     channelStrip.append(instrumentSelect, nameDiv, indicator, buttonsDiv);
     mixerChannelsContainer.append(channelStrip);
 
@@ -987,7 +973,6 @@ export function renderMixerChannels() {
       noteSustainBtn,
       arpeggioLinkSelect,
       volumeSlider,
-      repeatProbabilitySlider,
       midiChannelSelect,
       midiSendBtn,
       midiReceiveBtn,
@@ -1109,6 +1094,18 @@ export function syncRhythmPatternUI(rhythmPattern) {
     button.classList.toggle("is-active", isPaused);
     button.setAttribute("aria-pressed", String(isPaused));
   });
+}
+
+export function syncArpeggioRepeatProbabilityUI(probabilityValue) {
+  const input = getArpeggioRepeatProbabilityInputElement();
+  const value = getArpeggioRepeatProbabilityValueElement();
+  const normalized = clamp(Number(probabilityValue) || 0, 0, 1);
+  if (input) {
+    input.value = String(normalized);
+  }
+  if (value) {
+    value.textContent = `${Math.round(normalized * 100)}%`;
+  }
 }
 
 export function generateRhythmButtons() {
@@ -1318,7 +1315,8 @@ export function syncControlsFromActiveInstrumentPage() {
    );
     syncArpeggioPauseNoteControlUI(instrumentParams.pauseNoteEnabled ?? 0);
     syncRhythmPatternUI(instrumentParams.rhythmPattern ?? "0000000000000000");
-   syncArpeggioSettingsHistoryView(state.activeInstrumentPresetId);
+    syncArpeggioRepeatProbabilityUI(instrumentParams.arpeggioRepeatProbability ?? 0);
+    syncArpeggioSettingsHistoryView(state.activeInstrumentPresetId);
    syncMidiGlobalUI();
    updateTransportUI();
 }
@@ -1669,6 +1667,18 @@ export function bindRhythmButtons(controller) {
   });
 }
 
+export function bindArpeggioRepeatProbabilityControl(controller) {
+  const input = getArpeggioRepeatProbabilityInputElement();
+  if (!input) {
+    return;
+  }
+
+  input.addEventListener("input", (event) => {
+    const value = Number.parseFloat(event.target.value);
+    controller.setChannelArpeggioRepeatProbability(state.activeInstrumentPresetId, value);
+  });
+}
+
 export function bindSettingsDialog(controller) {
   const toggleButton = getArpeggioSettingsToggleElement();
   const dialog = getArpeggioSettingsDialogElement();
@@ -1835,13 +1845,6 @@ export function bindMixerChannels(controller) {
 
   // Volume slider input (separate handler to avoid stopPropagation issues)
   mixerChannelsContainer.addEventListener("input", (event) => {
-    if (event.target.classList.contains("channel-repeat-probability-slider")) {
-      const presetId = event.target.dataset.presetId;
-      if (!presetId) return;
-      controller.setChannelArpeggioRepeatProbability(presetId, Number.parseFloat(event.target.value));
-      return;
-    }
-
     if (!event.target.classList.contains("channel-volume-slider")) {
       return;
     }
@@ -2132,7 +2135,9 @@ export function bindControllerEvents(controller) {
     }
 
     if (type === "channel-arpeggio-repeat-probability-updated") {
-      updateChannelRepeatProbabilitySlider(event.detail.presetId, event.detail.value);
+      if (event.detail.presetId === state.activeInstrumentPresetId) {
+        syncArpeggioRepeatProbabilityUI(event.detail.value);
+      }
       return;
     }
 
