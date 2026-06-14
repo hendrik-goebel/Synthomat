@@ -27,6 +27,7 @@ import {
   DEAD_NOTE_PAUSE_COUNT_MIN,
   MIDI_CHANNEL_MAX,
   MIDI_CHANNEL_MIN,
+  SLIDER_DEFINITIONS,
 } from "./value-limits.js";
 import { statusLabel } from "./dom.js";
 import {
@@ -1237,6 +1238,22 @@ export function syncControlsFromActiveInstrumentPage() {
    syncArpeggioSettingsHistoryView(state.activeInstrumentPresetId);
    syncMidiGlobalUI();
    updateTransportUI();
+}
+
+/**
+ * Apply min/max/step attributes from SLIDER_DEFINITIONS to all range inputs.
+ * Call this once during startup, before any state sync.
+ */
+export function applySliderDefinitions() {
+  Object.entries(SLIDER_DEFINITIONS).forEach(([id, { min, max, step }]) => {
+    const el = document.getElementById(id);
+    if (!el || el.type !== "range") {
+      return;
+    }
+    el.min = String(min);
+    el.max = String(max);
+    el.step = String(step);
+  });
 }
 
 export function bindControls() {
