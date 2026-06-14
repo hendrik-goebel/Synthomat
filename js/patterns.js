@@ -16,6 +16,7 @@ import { state } from "./state.js";
 const noteFrequencyMap = new Map(NOTE_OPTIONS.map(({ id, frequency }) => [id, frequency]));
 const noteOrderIndexMap = new Map(NOTE_OPTIONS.map(({ id }, index) => [id, index]));
 const validNoteIdSet = new Set(NOTE_OPTIONS.map(({ id }) => id));
+const MAX_ARPEGGIO_NOTE_REPEAT_COUNT = 4;
 const pitchClassOrder = PITCH_CLASS_OPTIONS.map(({ key }) => key);
 const pitchClassOrderIndexMap = new Map(pitchClassOrder.map((key, index) => [key, index]));
 const validArpeggioOctaveSet = new Set(ARPEGGIO_OCTAVE_OPTIONS);
@@ -245,6 +246,29 @@ export function buildArpeggioPattern(notes, trailingPauseCount = 0, pauseInserti
   return pattern;
 }
 
+function applyArpeggioRepeatProbability(pattern, probability) {
+  const normalizedProbability = Math.min(
+    1,
+    Math.max(0, Number.isFinite(probability) ? probability : 0),
+  );
+
+  if (normalizedProbability <= 0) {
+    return pattern.slice();
+  }
+
+  return pattern.flatMap((step) => {
+    if (step === null) {
+      return [null];
+    }
+
+    let repeatCount = 1;
+    while (repeatCount < MAX_ARPEGGIO_NOTE_REPEAT_COUNT && Math.random() < normalizedProbability) {
+      repeatCount += 1;
+    }
+    return Array.from({ length: repeatCount }, () => step);
+  });
+}
+
 export function ensureInstrumentArpeggioPitchClassState(presetId) {
   if (!state.instrumentArpeggioPitchClassesByPresetId[presetId]) {
     state.instrumentArpeggioPitchClassesByPresetId[presetId] =
@@ -300,27 +324,29 @@ export function rebuildInstrumentPattern(presetId) {
     : getEligibleRandomNotePool(presetId).slice(0, 3);
   state.instrumentNoteIdsByPresetId[presetId] = selectedNoteIds.slice();
   const instrumentParams = getInstrumentParams(presetId);
-  const selectedFrequencies = selectedNoteIds
-    .map((id) => noteFrequencyMap.get(id))
-    .filter(Boolean);
   const includePauseNote = Boolean(Number(instrumentParams.pauseNoteEnabled ?? 0));
   const pauseInsertionIndex = includePauseNote
     ? getRandomPauseInsertionIndex(selectedNoteIds.length)
     : null;
   const rhythmPattern = instrumentParams.rhythmPattern ?? "0000000000000000";
+  const repeatProbability = Number(instrumentParams.arpeggioRepeatProbability ?? 0);
 
-  state.instrumentPatternNoteIdsByPresetId[presetId] = buildArpeggioPattern(
+  const basePatternNoteIds = buildArpeggioPattern(
     selectedNoteIds,
     instrumentParams.deadNoteAtEnd ? instrumentParams.endPauseCount ?? 1 : 0,
     pauseInsertionIndex,
     rhythmPattern,
   );
-  state.instrumentPatternsByPresetId[presetId] = buildArpeggioPattern(
-    selectedFrequencies,
-    instrumentParams.deadNoteAtEnd ? instrumentParams.endPauseCount ?? 1 : 0,
-    pauseInsertionIndex,
-    rhythmPattern,
-  );
+  const repeatedPatternNoteIds = applyArpeggioRepeatProbability(basePatternNoteIds, repeatProbability);
+
+  state.instrumentPatternNoteIdsByPresetId[presetId] = repeatedPatternNoteIds;
+  state.instrumentPatternsByPresetId[presetId] = repeatedPatternNoteIds
+    .map((noteId) => {
+      if (noteId === null) {
+        return null;
+      }
+      return noteFrequencyMap.get(noteId) ?? null;
+    });
 }
 
 export function createInstrumentNoteVariation(presetId) {

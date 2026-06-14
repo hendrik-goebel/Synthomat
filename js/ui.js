@@ -86,6 +86,8 @@ let settingsChannelButtonElements = null;
 let noteRowToggleElements = null;
 let noteRowElements = null;
 let rhythmButtonElements = null;
+let arpeggioRepeatProbabilityInputElement = null;
+let arpeggioRepeatProbabilityValueElement = null;
 let selectedArpeggioApplyChannelIds = new Set();
 const mixerChannelCache = new Map();
 const controlElementCache = new Map();
@@ -130,6 +132,20 @@ function getRhythmButtonElements() {
     }
   }
   return rhythmButtonElements;
+}
+
+function getArpeggioRepeatProbabilityInputElement() {
+  if (!arpeggioRepeatProbabilityInputElement) {
+    arpeggioRepeatProbabilityInputElement = document.getElementById("arpeggio-repeat-probability");
+  }
+  return arpeggioRepeatProbabilityInputElement;
+}
+
+function getArpeggioRepeatProbabilityValueElement() {
+  if (!arpeggioRepeatProbabilityValueElement) {
+    arpeggioRepeatProbabilityValueElement = document.getElementById("arpeggio-repeat-probability-value");
+  }
+  return arpeggioRepeatProbabilityValueElement;
 }
 
 function getArpeggioSettingsToggleElement() {
@@ -1003,6 +1019,16 @@ function updateChannelVolumeSlider(presetId, value) {
   }
 }
 
+function updateChannelRepeatProbabilitySlider(presetId, value) {
+  const channelElements = mixerChannelCache.get(presetId);
+  const slider = channelElements?.repeatProbabilitySlider;
+  if (!slider) return;
+  const next = String(clamp(value, 0, 1));
+  if (slider.value !== next) {
+    slider.value = next;
+  }
+}
+
 function updateChannelMuteButton(presetId, value) {
   const channelElements = mixerChannelCache.get(presetId);
   const muteButton = channelElements?.muteBtn;
@@ -1068,6 +1094,18 @@ export function syncRhythmPatternUI(rhythmPattern) {
     button.classList.toggle("is-active", isPaused);
     button.setAttribute("aria-pressed", String(isPaused));
   });
+}
+
+export function syncArpeggioRepeatProbabilityUI(probabilityValue) {
+  const input = getArpeggioRepeatProbabilityInputElement();
+  const value = getArpeggioRepeatProbabilityValueElement();
+  const normalized = clamp(Number(probabilityValue) || 0, 0, 1);
+  if (input) {
+    input.value = String(normalized);
+  }
+  if (value) {
+    value.textContent = `${Math.round(normalized * 100)}%`;
+  }
 }
 
 export function generateRhythmButtons() {
@@ -1277,7 +1315,8 @@ export function syncControlsFromActiveInstrumentPage() {
    );
     syncArpeggioPauseNoteControlUI(instrumentParams.pauseNoteEnabled ?? 0);
     syncRhythmPatternUI(instrumentParams.rhythmPattern ?? "0000000000000000");
-   syncArpeggioSettingsHistoryView(state.activeInstrumentPresetId);
+    syncArpeggioRepeatProbabilityUI(instrumentParams.arpeggioRepeatProbability ?? 0);
+    syncArpeggioSettingsHistoryView(state.activeInstrumentPresetId);
    syncMidiGlobalUI();
    updateTransportUI();
 }
@@ -1625,6 +1664,18 @@ export function bindRhythmButtons(controller) {
       }
       controllerRef.toggleRhythmPatternPosition(index);
     });
+  });
+}
+
+export function bindArpeggioRepeatProbabilityControl(controller) {
+  const input = getArpeggioRepeatProbabilityInputElement();
+  if (!input) {
+    return;
+  }
+
+  input.addEventListener("input", (event) => {
+    const value = Number.parseFloat(event.target.value);
+    controller.setChannelArpeggioRepeatProbability(state.activeInstrumentPresetId, value);
   });
 }
 
@@ -2080,6 +2131,13 @@ export function bindControllerEvents(controller) {
 
     if (type === "channel-volume-updated") {
       updateChannelVolumeSlider(event.detail.presetId, event.detail.value);
+      return;
+    }
+
+    if (type === "channel-arpeggio-repeat-probability-updated") {
+      if (event.detail.presetId === state.activeInstrumentPresetId) {
+        syncArpeggioRepeatProbabilityUI(event.detail.value);
+      }
       return;
     }
 

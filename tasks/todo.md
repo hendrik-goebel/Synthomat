@@ -1,3 +1,26 @@
+# Task: Add Per-Channel Arpeggio Note Repeat Probability Slider
+
+## Plan
+- [x] Add one per-channel mixer slider in `js/ui.js` / `css/style.css` for arpeggio note repeat probability (`0..1`).
+- [x] Store the slider value as a channel-local parameter so it persists through channel reassignment and state seed round-trips.
+- [x] Apply the repeat probability whenever an arpeggio pattern is rebuilt, with `0` meaning no repeats and `1` allowing each note step to repeat up to 4 times.
+- [x] Add a focused regression test and run targeted arpeggio checks plus a production build.
+
+## Progress Notes
+- Added a new per-channel `Rpt` slider (`.channel-repeat-probability-slider`) in `js/ui.js` with mixer cache sync and controller event handling, plus new row/slider styling in `css/style.css`.
+- Added `arpeggioRepeatProbability` to channel-local defaults in `js/constants.js` / `js/presets.js`, including preservation across channel instrument reassignment.
+- Added `AudioStateController.setChannelArpeggioRepeatProbability(...)` in `js/audio-state-controller.js`, including validation, clamping, pattern rebuild, and `channel-arpeggio-repeat-probability-updated` events.
+- Updated `js/patterns.js` so pattern rebuild now applies repeat probability to note steps only (rests are not multiplied) and keeps MIDI note-id patterns and frequency patterns step-aligned.
+- Added `tasks/arpeggio-repeat-probability-test.mjs` to lock min/max behavior and rest handling.
+- Follow-up UX update: moved the repeat-probability slider out of mixer strips and placed it directly below the rhythm-definition section in `index.html`, with active-channel sync/binding in `js/ui.js` and dedicated styling in `css/style.css`.
+
+## Review
+- `node --experimental-default-type=module tasks/arpeggio-repeat-probability-test.mjs` passed.
+- `node --experimental-default-type=module tasks/arpeggio-pause-note-test.mjs` passed.
+- `npm run build` completed successfully.
+
+---
+
 # Task: Add Per-Channel Arpeggio Link Alternation
 
 ## Plan
