@@ -721,7 +721,7 @@ export function renderMixerChannels() {
 
   // Incremental update: if channels are already rendered, only patch class state
   if (mixerChannelCache.size > 0) {
-    mixerChannelCache.forEach(({ strip, indicator, instrumentSelect, playBtn, muteBtn, arpeggioLinkSelect, volumeSlider, midiChannelSelect, midiSendBtn, midiReceiveBtn }, presetId) => {
+    mixerChannelCache.forEach(({ strip, indicator, instrumentSelect, playBtn, muteBtn, arpeggioLinkSelect, volumeSlider, repeatProbabilitySlider, midiChannelSelect, midiSendBtn, midiReceiveBtn }, presetId) => {
       const isPlaying = state.playingPresetIds.has(presetId);
       const isCurrent = presetId === state.activeInstrumentPresetId;
       const assignedPresetId = getAssignedPresetId(presetId);
@@ -757,6 +757,14 @@ export function renderMixerChannels() {
 
       if (volumeSlider) {
         volumeSlider.classList.toggle("is-muted", isMuted);
+      }
+
+      if (repeatProbabilitySlider) {
+        const repeatProbability = Math.max(0, Math.min(1, Number(instrumentParams.arpeggioRepeatProbability ?? 0)));
+        const nextRepeatValue = String(repeatProbability);
+        if (repeatProbabilitySlider.value !== nextRepeatValue) {
+          repeatProbabilitySlider.value = nextRepeatValue;
+        }
       }
 
       if (midiChannelSelect && midiChannelSelect.value !== String(midiChannelSettings.midiChannel)) {
@@ -908,6 +916,28 @@ export function renderMixerChannels() {
     volumeSlider.dataset.presetId = presetId;
     volumeSlider.classList.toggle("is-muted", isMuted);
 
+    const repeatProbabilityRow = document.createElement("div");
+    repeatProbabilityRow.className = "channel-repeat-probability-row";
+
+    const repeatProbabilityLabel = document.createElement("span");
+    repeatProbabilityLabel.className = "channel-repeat-probability-label";
+    repeatProbabilityLabel.textContent = "Rpt";
+
+    const repeatProbabilitySlider = document.createElement("input");
+    repeatProbabilitySlider.type = "range";
+    repeatProbabilitySlider.className = "channel-repeat-probability-slider";
+    repeatProbabilitySlider.min = "0";
+    repeatProbabilitySlider.max = "1";
+    repeatProbabilitySlider.step = "0.01";
+    repeatProbabilitySlider.value = String(
+      Math.max(0, Math.min(1, Number(instrumentParams.arpeggioRepeatProbability ?? 0))),
+    );
+    repeatProbabilitySlider.dataset.presetId = presetId;
+    repeatProbabilitySlider.title = "Arpeggio repeat probability";
+    repeatProbabilitySlider.setAttribute("aria-label", `Arpeggio repeat probability for channel ${index + 1}`);
+
+    repeatProbabilityRow.append(repeatProbabilityLabel, repeatProbabilitySlider);
+
     const midiRow = document.createElement("div");
     midiRow.className = "channel-midi-row";
 
@@ -943,7 +973,7 @@ export function renderMixerChannels() {
 
     midiRow.append(midiChannelSelect, midiSendBtn, midiReceiveBtn);
 
-    buttonsDiv.append(playBtn, variationBtn, muteBtn, noteLengthBtn, noteSustainBtn, arpeggioLinkSelect, volumeSlider, midiRow);
+    buttonsDiv.append(playBtn, variationBtn, muteBtn, noteLengthBtn, noteSustainBtn, arpeggioLinkSelect, volumeSlider, repeatProbabilityRow, midiRow);
     channelStrip.append(instrumentSelect, nameDiv, indicator, buttonsDiv);
     mixerChannelsContainer.append(channelStrip);
 
@@ -957,6 +987,7 @@ export function renderMixerChannels() {
       noteSustainBtn,
       arpeggioLinkSelect,
       volumeSlider,
+      repeatProbabilitySlider,
       midiChannelSelect,
       midiSendBtn,
       midiReceiveBtn,
@@ -996,6 +1027,16 @@ function updateChannelArpeggioLinkSelect(presetId) {
 function updateChannelVolumeSlider(presetId, value) {
   const channelElements = mixerChannelCache.get(presetId);
   const slider = channelElements?.volumeSlider;
+  if (!slider) return;
+  const next = String(clamp(value, 0, 1));
+  if (slider.value !== next) {
+    slider.value = next;
+  }
+}
+
+function updateChannelRepeatProbabilitySlider(presetId, value) {
+  const channelElements = mixerChannelCache.get(presetId);
+  const slider = channelElements?.repeatProbabilitySlider;
   if (!slider) return;
   const next = String(clamp(value, 0, 1));
   if (slider.value !== next) {
@@ -1794,6 +1835,13 @@ export function bindMixerChannels(controller) {
 
   // Volume slider input (separate handler to avoid stopPropagation issues)
   mixerChannelsContainer.addEventListener("input", (event) => {
+    if (event.target.classList.contains("channel-repeat-probability-slider")) {
+      const presetId = event.target.dataset.presetId;
+      if (!presetId) return;
+      controller.setChannelArpeggioRepeatProbability(presetId, Number.parseFloat(event.target.value));
+      return;
+    }
+
     if (!event.target.classList.contains("channel-volume-slider")) {
       return;
     }
@@ -2080,6 +2128,11 @@ export function bindControllerEvents(controller) {
 
     if (type === "channel-volume-updated") {
       updateChannelVolumeSlider(event.detail.presetId, event.detail.value);
+      return;
+    }
+
+    if (type === "channel-arpeggio-repeat-probability-updated") {
+      updateChannelRepeatProbabilitySlider(event.detail.presetId, event.detail.value);
       return;
     }
 

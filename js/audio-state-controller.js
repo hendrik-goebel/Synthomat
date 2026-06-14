@@ -374,6 +374,8 @@ function sanitizeSeedChannelParamValue(key, value, fallback, currentParams = {})
     case "deadNoteAtEnd":
     case "channelMuted":
       return sanitizeToggleValue(value, fallback);
+    case "arpeggioRepeatProbability":
+      return clampNumber(value, 0, 1, fallback);
     case "arpeggioLinkTargetId": {
       if (typeof value !== "string") {
         return "";
@@ -1925,6 +1927,34 @@ export class AudioStateController extends EventTarget {
     applyLiveChannelLevelUpdates(presetId, instrumentParams);
 
     this.emitStateChange("channel-volume-updated", { presetId, value: clamped });
+    return true;
+  }
+
+  setChannelArpeggioRepeatProbability(presetId, value) {
+    if (!validChannelIds.has(presetId)) {
+      this.emitError(`Unknown preset id: ${presetId}`, { presetId });
+      return false;
+    }
+
+    const numericValue = Number.parseFloat(value);
+    if (!Number.isFinite(numericValue)) {
+      this.emitError("Arpeggio repeat probability must be a number", { presetId, value });
+      return false;
+    }
+
+    const clampedValue = Math.max(0, Math.min(1, numericValue));
+    const instrumentParams = getInstrumentParams(presetId);
+    instrumentParams.arpeggioRepeatProbability = clampedValue;
+    rebuildInstrumentPattern(presetId);
+
+    this.emitAction("channel-arpeggio-repeat-probability-updated", {
+      presetId,
+      value: clampedValue,
+    });
+    this.emitStateChange("channel-arpeggio-repeat-probability-updated", {
+      presetId,
+      value: clampedValue,
+    });
     return true;
   }
 
