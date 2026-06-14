@@ -773,6 +773,59 @@ export class AudioStateController extends EventTarget {
     return Array.from(affectedPresetIdSet);
   }
 
+  setChannelArpeggioLinkTarget(presetId, targetPresetId = "") {
+    if (!validChannelIds.has(presetId)) {
+      this.emitError(`Unknown preset id: ${presetId}`, { presetId });
+      return false;
+    }
+
+    const normalizedTargetPresetId = typeof targetPresetId === "string"
+      ? targetPresetId.trim()
+      : "";
+
+    if (normalizedTargetPresetId && !validChannelIds.has(normalizedTargetPresetId)) {
+      this.emitError(`Unknown preset id: ${normalizedTargetPresetId}`, {
+        presetId,
+        targetPresetId,
+      });
+      return false;
+    }
+
+    if (normalizedTargetPresetId === presetId) {
+      this.emitError("A channel cannot link its arpeggiator to itself", {
+        presetId,
+        targetPresetId,
+      });
+      return false;
+    }
+
+    const currentTargetId = getInstrumentParams(presetId).arpeggioLinkTargetId || "";
+    if (currentTargetId === normalizedTargetPresetId) {
+      return true;
+    }
+
+    const affectedPresetIds = normalizedTargetPresetId
+      ? this.pairArpeggioLinks(presetId, normalizedTargetPresetId)
+      : this.clearChannelArpeggioLink(presetId);
+
+    affectedPresetIds.forEach((affectedPresetId) => {
+      state.linkedArpeggioStepIndexByPresetId[affectedPresetId] = 0;
+    });
+    state.linkedArpeggioTurnByPairKey = {};
+
+    this.emitAction("arpeggio-link-updated", {
+      presetId,
+      targetPresetId: normalizedTargetPresetId,
+      affectedPresetIds,
+    });
+    this.emitStateChange("arpeggio-link-updated", {
+      presetId,
+      targetPresetId: normalizedTargetPresetId,
+      affectedPresetIds,
+    });
+    return true;
+  }
+
   emitTransportStateChange(type = "transport-state-updated", detail = {}) {
     this.emitStateChange(type, {
       transportState: state.transportState,
@@ -1307,27 +1360,7 @@ export class AudioStateController extends EventTarget {
     const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % options.length;
     const nextTargetId = options[nextIndex];
 
-    const affectedPresetIds = nextTargetId
-      ? this.pairArpeggioLinks(presetId, nextTargetId)
-      : this.clearChannelArpeggioLink(presetId);
-
-    // Reset runtime turn progress for affected channels so the next cycle starts cleanly.
-    affectedPresetIds.forEach((affectedPresetId) => {
-      state.linkedArpeggioStepIndexByPresetId[affectedPresetId] = 0;
-    });
-    state.linkedArpeggioTurnByPairKey = {};
-
-    this.emitAction("arpeggio-link-updated", {
-      presetId,
-      targetPresetId: nextTargetId,
-      affectedPresetIds,
-    });
-    this.emitStateChange("arpeggio-link-updated", {
-      presetId,
-      targetPresetId: nextTargetId,
-      affectedPresetIds,
-    });
-    return true;
+    return this.setChannelArpeggioLinkTarget(presetId, nextTargetId);
   }
 
   setControlValue(controlId, value) {

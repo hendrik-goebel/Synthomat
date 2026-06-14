@@ -447,6 +447,23 @@ body {
   color: #ede9fe;
 }
 
+.channel-arpeggio-link-select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.35rem 0.3rem;
+  border: 1px solid #0f766e;
+  border-radius: 0.3rem;
+  background: #0f172a;
+  color: #99f6e4;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.channel-arpeggio-link-select:focus-visible {
+  outline: 2px solid #2dd4bf;
+  outline-offset: 1px;
+}
+
 .channel-volume-slider {
   width: 100%;
   -webkit-appearance: none;
