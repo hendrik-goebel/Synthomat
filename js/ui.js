@@ -67,6 +67,7 @@ let globalKeyValueElement = null;
 let globalKeyNoteListElement = null;
 let globalPlayButtonElement = null;
 let globalStopButtonElement = null;
+let panicStopButtonElement = null;
 let midiStatusElement = null;
 let midiClockStatusElement = null;
 let midiOutputFollowerStatusElement = null;
@@ -244,6 +245,13 @@ function getGlobalStopButtonElement() {
     globalStopButtonElement = document.getElementById("global-stop");
   }
   return globalStopButtonElement;
+}
+
+function getPanicStopButtonElement() {
+  if (!panicStopButtonElement) {
+    panicStopButtonElement = document.getElementById("panic-stop");
+  }
+  return panicStopButtonElement;
 }
 
 function getMidiStatusElement() {
@@ -1440,6 +1448,7 @@ export function bindGlobalKeyActions(controller) {
 export function bindGlobalTransportControls(controller) {
   const playButton = getGlobalPlayButtonElement();
   const stopButton = getGlobalStopButtonElement();
+  const panicButton = getPanicStopButtonElement();
 
   playButton?.addEventListener("click", async () => {
     await controller.playAll();
@@ -1448,6 +1457,9 @@ export function bindGlobalTransportControls(controller) {
 
   stopButton?.addEventListener("click", async () => {
     await controller.stopAll();
+  });
+  panicButton?.addEventListener("click", async () => {
+    await controller.stopAll({ source: "panic" });
   });
 
   syncGlobalTransportButtons();

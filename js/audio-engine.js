@@ -280,6 +280,7 @@ function resetAudioRuntimeState() {
   state.reverbWetGain = null;
   state.reverbDryGain = null;
   state.activeChannelLevelGainsByPresetId = {};
+  state.activeMidiNotesByKey = {};
   resetDistortionEffectState();
 }
 
@@ -403,6 +404,7 @@ export function scheduleNote(
   noteLength = 8,
   velocity = MIDI_VELOCITY_MAX,
   lfoContextOverride = null,
+  { holdUntilNoteOff = false } = {},
 ) {
   const ctx = state.audioContext;
   const lfoContext = lfoContextOverride ?? buildLfoModulationContext(time, voiceParams);
@@ -484,7 +486,9 @@ export function scheduleNote(
     voiceNodes.push(stereoPanner);
   }
 
-  const noteDuration = getNoteDuration(voiceParams.noteSustain ?? noteLength);
+  const noteDuration = holdUntilNoteOff
+    ? 3600
+    : getNoteDuration(voiceParams.noteSustain ?? noteLength);
   const preStartTime = Math.max(0, time - 0.002);
   const layerGainScale = 1 / Math.sqrt(layerCount);
   const timbreBias = getGlobalTimbreBias();
@@ -791,6 +795,28 @@ export function scheduleNote(
   oscB.stop(stopTime);
   subOsc.stop(stopTime);
 
+  const releaseVoice = (releaseAt = ctx.currentTime) => {
+    const releaseStart = Math.max(releaseAt, time + 0.02);
+    const releaseStop = releaseStart + Math.max(0.08, releaseTimeConstant * 6);
+    const releaseFadeOut = Math.max(releaseStart + 0.01, releaseStop - 0.004);
+    voiceGain.gain.cancelScheduledValues(releaseStart);
+    voiceGain.gain.setTargetAtTime(0, releaseStart, releaseTimeConstant);
+    voiceGain.gain.linearRampToValueAtTime(0, releaseFadeOut);
+    channelOutputGain.gain.cancelScheduledValues(releaseStart);
+    channelOutputGain.gain.setTargetAtTime(0, releaseStart, releaseTimeConstant);
+    channelOutputGain.gain.linearRampToValueAtTime(0, releaseFadeOut);
+    [oscA, oscB, subOsc, noiseSource].forEach((sourceNode) => {
+      if (!sourceNode) {
+        return;
+      }
+      try {
+        sourceNode.stop(releaseStop);
+      } catch (_) {
+        // A source may already have stopped during teardown.
+      }
+    });
+  };
+
   // Auto-disconnect all nodes once oscA finishes to free audio graph memory
   oscA.onended = () => {
     // Allow automation tails to settle before disconnecting this voice graph.
@@ -805,6 +831,8 @@ export function scheduleNote(
       }
     }, 12);
   };
+
+  return holdUntilNoteOff ? { release: releaseVoice } : null;
 }
 
 export function scheduleInstrumentStackNote(time, stepIndex = state.stepIndex) {
@@ -1056,7 +1084,7 @@ export function triggerImmediateMidiNote(
     audioTime,
     scheduledTimestampMs,
   });
-  scheduleNote(
+  const voice = scheduleNote(
     frequency,
     audioTime,
     voiceParams,
@@ -1065,7 +1093,30 @@ export function triggerImmediateMidiNote(
     presetId,
     voiceParams.noteLength || 8,
     velocity,
+    null,
+    { holdUntilNoteOff: true },
   );
+  if (voice) {
+    const noteKey = `${presetId}:${midiNoteNumber}`;
+    const activeNotes = state.activeMidiNotesByKey[noteKey] || [];
+    activeNotes.push(voice);
+    state.activeMidiNotesByKey[noteKey] = activeNotes;
+  }
+  return Boolean(voice);
+}
+
+export function releaseImmediateMidiNote(presetId, midiNoteNumber, releaseAt = state.audioContext?.currentTime) {
+  const noteKey = `${presetId}:${midiNoteNumber}`;
+  const activeNotes = state.activeMidiNotesByKey[noteKey];
+  if (!activeNotes || activeNotes.length === 0) {
+    return false;
+  }
+
+  const voice = activeNotes.shift();
+  if (activeNotes.length === 0) {
+    delete state.activeMidiNotesByKey[noteKey];
+  }
+  voice?.release?.(releaseAt);
   return true;
 }
 

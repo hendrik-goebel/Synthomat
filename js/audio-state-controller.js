@@ -66,6 +66,7 @@ import {
   stopSchedulerLoop,
   stopAllPlayback,
   stopPresetPlayback,
+  releaseImmediateMidiNote,
   triggerImmediateMidiNote,
 } from "./audio-engine.js";
 import {
@@ -1141,7 +1142,7 @@ export class AudioStateController extends EventTarget {
     { type, midiChannel, noteNumber, velocity = 0 },
     { source = "hardware", receivedTimestampMs = undefined } = {},
   ) {
-    if (type !== "noteon") {
+    if (type !== "noteon" && type !== "noteoff") {
       return false;
     }
 
@@ -1156,12 +1157,18 @@ export class AudioStateController extends EventTarget {
 
     try {
       await ensureAudioContext();
-      targetPresetIds.forEach((presetId) => {
-        triggerImmediateMidiNote(presetId, noteNumber, velocity, {
-          receivedTimestampMs,
-          source,
+      if (type === "noteon") {
+        targetPresetIds.forEach((presetId) => {
+          triggerImmediateMidiNote(presetId, noteNumber, velocity, {
+            receivedTimestampMs,
+            source,
+          });
         });
-      });
+      } else {
+        targetPresetIds.forEach((presetId) => {
+          releaseImmediateMidiNote(presetId, noteNumber);
+        });
+      }
 
       this.emitAction("midi-note-received", {
         source,

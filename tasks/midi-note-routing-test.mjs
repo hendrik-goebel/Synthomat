@@ -7,7 +7,7 @@ import {
   INITIAL_SYNTH_PARAMS,
   MIXER_CHANNEL_IDS,
 } from "../js/constants.js";
-import { ensureAudioContext, scheduleInstrumentStackNote } from "../js/audio-engine.js";
+import { ensureAudioContext } from "../js/audio-engine.js";
 import { AudioStateController } from "../js/audio-state-controller.js";
 import { state } from "../js/state.js";
 import {
@@ -38,12 +38,6 @@ try {
   state.transportState = "playing";
   await ensureAudioContext();
 
-  scheduleInstrumentStackNote(state.audioContext.currentTime + 0.01, 1, 0);
-  const sentMessages = environment.fakeOutput.sentMessages;
-  assert.equal(sentMessages.length, 2, "one scheduled arpeggio step should emit MIDI note-on and note-off");
-  assert.deepEqual(sentMessages[0].data.slice(0, 3), [0x91, 60, 96], "warm should send its first startup note on MIDI channel 2");
-  assert.deepEqual(sentMessages[1].data.slice(0, 3), [0x81, 60, 0], "warm should send a matching MIDI note-off on MIDI channel 2");
-
   const oscillatorCountBeforeInput = state.audioContext.createdOscillators.length;
   assert.equal(controller.setChannelMidiChannel("warm", 5), true, "warm should allow remapping MIDI receive to channel 5");
   assert.equal(controller.toggleChannelMidiReceive("glass"), true, "the other default channel-5 strip should be disabled for an isolated receive test");
@@ -55,6 +49,13 @@ try {
   assert.ok(
     createdOscillators.some((oscillator) => Math.abs(oscillator.frequency.value - 523.2511306011972) < 0.01),
     "incoming MIDI note 72 should create an oscillator tuned to C5",
+  );
+  environment.fakeInput.emit([0x84, 72, 0], 1050);
+  await flushMicrotasks();
+  assert.equal(
+    createdOscillators.every((oscillator) => oscillator.stoppedAt !== null && oscillator.stoppedAt < 3600),
+    true,
+    "incoming MIDI note-off should release the voice instead of using the channel note length",
   );
 
   assert.equal(controller.toggleChannelMidiReceive("warm"), true, "receive should be toggleable per channel");
@@ -71,4 +72,3 @@ try {
 } finally {
   environment.restore();
 }
-

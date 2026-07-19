@@ -514,22 +514,32 @@ function handleMidiInputMessage(event) {
       return;
     }
 
-    boundController?.handleIncomingMidiNoteMessage({
+    const midiEvent = {
       type: "noteoff",
       midiChannel,
       noteNumber: data1,
       velocity: 0,
-    }, { source: "hardware" });
+    };
+    boundController?.handleIncomingMidiNoteMessage(midiEvent, {
+      source: "hardware",
+      receivedTimestampMs: event?.receivedTime ?? nowMs(),
+    });
+    broadcastCrossTabMidiEvent("midi-note-message", midiEvent);
     return;
   }
 
   if (messageType === 0x80) {
-    boundController?.handleIncomingMidiNoteMessage({
+    const midiEvent = {
       type: "noteoff",
       midiChannel,
       noteNumber: data1,
       velocity: data2,
-    }, { source: "hardware" });
+    };
+    boundController?.handleIncomingMidiNoteMessage(midiEvent, {
+      source: "hardware",
+      receivedTimestampMs: event?.receivedTime ?? nowMs(),
+    });
+    broadcastCrossTabMidiEvent("midi-note-message", midiEvent);
   }
 }
 

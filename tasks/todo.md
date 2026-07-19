@@ -21,6 +21,22 @@
 
 ---
 
+# Task: Add Panic Stop Button
+
+## Plan
+- [x] Add an always-available panic control beside the global transport buttons.
+- [x] Route panic activation through the existing global stop implementation.
+- [x] Style the control distinctly and verify the production build.
+
+## Progress Notes
+- Added `#panic-stop` with an explicit accessible label and warning styling.
+- Panic activation calls `controller.stopAll({ source: "panic" })`, stopping the scheduler, audio context, and related MIDI transport state through the existing shutdown path.
+
+## Review
+- `npm run build` completed successfully.
+
+---
+
 # Task: Add Per-Channel Arpeggio Link Alternation
 
 ## Plan
@@ -2062,6 +2078,24 @@
 
 ---
 
+# Task: Respect External MIDI Note Length
+
+## Plan
+- [x] Track incoming MIDI note-on voices independently of channel note-length settings.
+- [x] Release matching voices on incoming MIDI note-off messages, including cross-tab MIDI forwarding.
+- [x] Add regression coverage and verify the production build.
+
+## Progress Notes
+- External MIDI note-on voices now remain held until their matching note-off, while internally sequenced notes keep their configured channel durations.
+- Note-off handling releases repeated same-note voices in order and clears held-note state when the audio runtime resets.
+- Hardware note-off events now carry timestamps and are forwarded through the existing cross-tab MIDI path.
+
+## Review
+- `node tasks/midi-note-routing-test.mjs` passed.
+- `npm run build` completed successfully.
+
+---
+
 # Task: Split App Into Several Files
 
 ## Plan
@@ -2900,4 +2934,3 @@
 - Static IDE checks (`get_errors`) report no errors on edited files.
 - `npm run build` completed successfully after the distortion click/pop regression fix.
 - Webpack compiled without errors and emitted updated assets.
-

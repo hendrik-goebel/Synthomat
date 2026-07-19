@@ -357,6 +357,7 @@ export function resetSharedAppState(
   state.linkedArpeggioStepIndexByPresetId = {};
   state.activeInstrumentPresetId = DEFAULT_PRESET_ID;
   state.playingPresetIds = new Set();
+  state.activeMidiNotesByKey = {};
   state.midi = {
     supported: false,
     accessGranted: false,
@@ -379,4 +380,3 @@ export function resetSharedAppState(
     ),
   };
 }
-

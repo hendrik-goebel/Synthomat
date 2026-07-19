@@ -51,6 +51,7 @@ export const state = {
   linkedArpeggioStepIndexByPresetId: {},
   activeInstrumentPresetId: DEFAULT_PRESET_ID,
   playingPresetIds: new Set(),
+  activeMidiNotesByKey: {},
   midi: {
     supported: false,
     accessGranted: false,
