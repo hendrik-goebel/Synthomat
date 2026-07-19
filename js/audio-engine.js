@@ -48,6 +48,57 @@ const noiseBufferCache = new Map();
 
 export { applyReverbMix, createImpulseResponse, getTempoSyncedDelayTime, syncDelayTimeToTempo };
 
+function getPerformanceTimestampMs() {
+  return globalThis.performance?.now?.() ?? Date.now();
+}
+
+function getEstimatedPlaybackTimestampMs(audioContext, audioTime) {
+  const outputTimestamp = audioContext.getOutputTimestamp?.();
+  if (
+    outputTimestamp
+    && Number.isFinite(outputTimestamp.contextTime)
+    && Number.isFinite(outputTimestamp.performanceTime)
+  ) {
+    return outputTimestamp.performanceTime
+      + (audioTime - outputTimestamp.contextTime) * 1000;
+  }
+
+  return getPerformanceTimestampMs()
+    + (audioTime - audioContext.currentTime) * 1000;
+}
+
+function logIncomingMidiNoteTiming({
+  presetId,
+  midiNoteNumber,
+  velocity,
+  source,
+  receivedTimestampMs,
+  audioTime,
+  scheduledTimestampMs,
+}) {
+  if (typeof globalThis.console?.debug !== "function") {
+    return;
+  }
+
+  const estimatedPlaybackTimestampMs = getEstimatedPlaybackTimestampMs(state.audioContext, audioTime);
+  globalThis.console.debug("[MIDI] note timing", {
+    source,
+    presetId,
+    noteNumber: midiNoteNumber,
+    velocity,
+    receivedTimestampMs,
+    scheduledTimestampMs,
+    scheduledAudioTimeSeconds: audioTime,
+    estimatedPlaybackTimestampMs,
+    inputToScheduleMs: Number.isFinite(receivedTimestampMs)
+      ? scheduledTimestampMs - receivedTimestampMs
+      : undefined,
+    inputToEstimatedPlaybackMs: Number.isFinite(receivedTimestampMs)
+      ? estimatedPlaybackTimestampMs - receivedTimestampMs
+      : undefined,
+  });
+}
+
 function getNoiseBuffer(context) {
   const key = context.sampleRate;
   if (noiseBufferCache.has(key)) {
@@ -331,7 +382,7 @@ export function startSchedulerLoop() {
 export function ensureAudioContext() {
   if (!state.audioContext) {
     syncDelayTimeToTempo();
-    state.audioContext = new window.AudioContext();
+    state.audioContext = new window.AudioContext({ latencyHint: "interactive" });
     initializeAudioGraph();
   }
 
@@ -978,7 +1029,12 @@ export function scheduleCurrentTransportStep(time = state.audioContext?.currentT
   return true;
 }
 
-export function triggerImmediateMidiNote(presetId, midiNoteNumber, velocity = MIDI_VELOCITY_MAX) {
+export function triggerImmediateMidiNote(
+  presetId,
+  midiNoteNumber,
+  velocity = MIDI_VELOCITY_MAX,
+  { receivedTimestampMs = undefined, source = "hardware" } = {},
+) {
   if (!state.audioContext) {
     return false;
   }
@@ -989,9 +1045,20 @@ export function triggerImmediateMidiNote(presetId, midiNoteNumber, velocity = MI
   }
 
   const voiceParams = getInstrumentParams(presetId);
+  const audioTime = state.audioContext.currentTime;
+  const scheduledTimestampMs = getPerformanceTimestampMs();
+  logIncomingMidiNoteTiming({
+    presetId,
+    midiNoteNumber,
+    velocity,
+    source,
+    receivedTimestampMs,
+    audioTime,
+    scheduledTimestampMs,
+  });
   scheduleNote(
     frequency,
-    state.audioContext.currentTime + 0.005,
+    audioTime,
     voiceParams,
     0,
     1,

@@ -506,7 +506,10 @@ function handleMidiInputMessage(event) {
         noteNumber: data1,
         velocity: data2,
       };
-      boundController?.handleIncomingMidiNoteMessage(midiEvent, { source: "hardware" });
+      boundController?.handleIncomingMidiNoteMessage(midiEvent, {
+        source: "hardware",
+        receivedTimestampMs: event?.receivedTime ?? nowMs(),
+      });
       broadcastCrossTabMidiEvent("midi-note-message", midiEvent);
       return;
     }
@@ -852,4 +855,3 @@ export function sendMidiNoteForPreset(
 export function isValidMidiClockMode(mode) {
   return MIDI_CLOCK_MODE_OPTIONS.includes(mode);
 }
-

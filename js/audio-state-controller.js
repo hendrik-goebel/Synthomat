@@ -1137,7 +1137,10 @@ export class AudioStateController extends EventTarget {
     return true;
   }
 
-  async handleIncomingMidiNoteMessage({ type, midiChannel, noteNumber, velocity = 0 }, { source = "hardware" } = {}) {
+  async handleIncomingMidiNoteMessage(
+    { type, midiChannel, noteNumber, velocity = 0 },
+    { source = "hardware", receivedTimestampMs = undefined } = {},
+  ) {
     if (type !== "noteon") {
       return false;
     }
@@ -1154,7 +1157,10 @@ export class AudioStateController extends EventTarget {
     try {
       await ensureAudioContext();
       targetPresetIds.forEach((presetId) => {
-        triggerImmediateMidiNote(presetId, noteNumber, velocity);
+        triggerImmediateMidiNote(presetId, noteNumber, velocity, {
+          receivedTimestampMs,
+          source,
+        });
       });
 
       this.emitAction("midi-note-received", {
@@ -2205,4 +2211,3 @@ export class AudioStateController extends EventTarget {
     }));
   }
 }
-
